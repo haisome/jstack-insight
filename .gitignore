@@ -1,0 +1,36 @@
+# ==================== 通用 ====================
+.DS_Store
+*.log
+*.tmp
+*.swp
+
+# ==================== IDE ====================
+.idea/
+.vscode/
+.chatcode/
+*.iml
+*.iws
+*.ipr
+
+# ==================== 前端 (React + TypeScript) ====================
+# 依赖目录
+frontend/node_modules/
+
+# 构建输出
+frontend/build/
+dist/
+
+# npm/yarn/pnpm 日志
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==================== 后端 (Java Spring Boot + Maven) ====================
+# Maven 编译输出
+backend/target/
+
+# ==================== 其他 ====================
+# 上传的分析文件（可选）
+# uploads/
+# analysis/
