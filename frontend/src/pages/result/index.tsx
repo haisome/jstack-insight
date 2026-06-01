@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, Button, Space, Typography, Tag, Breadcrumb } from 'antd';
+import { Layout, Menu, Button, Space, Typography, Tag, Breadcrumb } from 'antd';
 import type { UploadFile } from 'antd';
 import {
   HomeOutlined,
@@ -10,6 +10,11 @@ import {
   ArrowLeftOutlined,
   BugOutlined,
   FileSearchOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  ClusterOutlined,
+  LockOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import Overview from './Overview';
 import Threads from './Threads';
@@ -18,6 +23,7 @@ import FlameGraph from './FlameGraph';
 import CpuAnalysis from './CpuAnalysis';
 import type { AnalysisResultVO, TopCpuVO } from '../../types';
 
+const { Sider, Content } = Layout;
 const { Title } = Typography;
 
 interface ResultPageProps {
@@ -26,46 +32,46 @@ interface ResultPageProps {
   onBack: () => void;
 }
 
-const TAB_NAMES: Record<string, string> = {
+/** 菜单 key → 面包屑名称 */
+const MENU_BREADCRUMB: Record<string, string> = {
   overview: '概览',
-  threads: '线程列表',
-  lockGraph: '锁竞争图',
-  flameGraph: '火焰图',
-  cpu: 'CPU 分析',
+  'thread-analysis': '线程分析',
+  'thread-list': '线程列表',
+  'thread-groups': '相同堆栈分析',
+  'lock-analysis': '锁分析',
+  'lock-graph': '锁竞争图',
+  'lock-deadlock': '死锁检测',
+  'flame-graph': '火焰图',
+  'cpu-analysis': 'CPU 分析',
+  'cpu-inference': 'CPU 线程推测',
+  'cpu-precise': '精准 CPU 采集',
 };
 
 const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }) => {
   const [activeTab, setActiveTab] = useState('overview');
+  const [collapsed, setCollapsed] = useState(false);
   // CPU 分析状态：提升到 ResultPage 层级，切换 tab 时不丢失
   const [cpuTopResult, setCpuTopResult] = useState<TopCpuVO | null>(null);
   const [cpuTopFileList, setCpuTopFileList] = useState<UploadFile[]>([]);
   const { threadState, lockGraph, flameGraph, deadlockChain } = result;
 
-  // 所有 Tab 面板常驻挂载，仅通过 CSS 控制显隐，切换 Tab 时状态不丢失
+  // 根据 activeTab 渲染对应面板（只渲染当前面板，切换时重新挂载）
   const renderTabContent = () => {
-    const overviewStyle: React.CSSProperties = {
-      display: activeTab === 'overview' ? 'block' : 'none',
-    };
-    const threadsStyle: React.CSSProperties = {
-      display: activeTab === 'threads' ? 'block' : 'none',
-    };
-    const lockGraphStyle: React.CSSProperties = {
-      display: activeTab === 'lockGraph' ? 'block' : 'none',
-    };
-    const flameGraphStyle: React.CSSProperties = {
-      display: activeTab === 'flameGraph' ? 'block' : 'none',
-    };
-    const cpuStyle: React.CSSProperties = {
-      display: activeTab === 'cpu' ? 'block' : 'none',
-    };
-
-    return (
-      <>
-        <div style={overviewStyle}><Overview threadState={threadState} /></div>
-        <div style={threadsStyle}><Threads threads={threadState.threads} /></div>
-        <div style={lockGraphStyle}><LockGraph lockGraph={lockGraph} /></div>
-        <div style={flameGraphStyle}><FlameGraph flameGraph={flameGraph} /></div>
-        <div style={cpuStyle}>
+    switch (activeTab) {
+      case 'overview':
+        return <Overview threadState={threadState} />;
+      case 'thread-list':
+        return <Threads threads={threadState.threads} view="list" />;
+      case 'thread-groups':
+        return <Threads threads={threadState.threads} view="groups" />;
+      case 'lock-graph':
+        return <LockGraph lockGraph={lockGraph} />;
+      case 'lock-deadlock':
+        return <LockGraph lockGraph={lockGraph} />;
+      case 'flame-graph':
+        return <FlameGraph flameGraph={flameGraph} />;
+      case 'cpu-inference':
+        return (
           <CpuAnalysis
             threads={threadState.threads}
             jstackRawFile={jstackRawFile}
@@ -73,13 +79,27 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
             setCpuTopResult={setCpuTopResult}
             cpuTopFileList={cpuTopFileList}
             setCpuTopFileList={setCpuTopFileList}
+            view="inference"
           />
-        </div>
-      </>
-    );
+        );
+      case 'cpu-precise':
+        return (
+          <CpuAnalysis
+            threads={threadState.threads}
+            jstackRawFile={jstackRawFile}
+            cpuTopResult={cpuTopResult}
+            setCpuTopResult={setCpuTopResult}
+            cpuTopFileList={cpuTopFileList}
+            setCpuTopFileList={setCpuTopFileList}
+            view="precise"
+          />
+        );
+      default:
+        return <Overview threadState={threadState} />;
+    }
   };
 
-  // 菜单项（带角标）
+  // 菜单项（带角标 + 子菜单）
   const menuItems = [
     {
       key: 'overview',
@@ -87,7 +107,7 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
       label: '概览',
     },
     {
-      key: 'threads',
+      key: 'thread-analysis',
       icon: (
         <span style={{ position: 'relative' }}>
           <UnorderedListOutlined />
@@ -114,10 +134,22 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
           )}
         </span>
       ),
-      label: '线程列表',
+      label: '线程分析',
+      children: [
+        {
+          key: 'thread-list',
+          icon: <UnorderedListOutlined />,
+          label: '线程列表',
+        },
+        {
+          key: 'thread-groups',
+          icon: <ClusterOutlined />,
+          label: '相同堆栈分析',
+        },
+      ],
     },
     {
-      key: 'lockGraph',
+      key: 'lock-analysis',
       icon: (
         <span style={{ position: 'relative' }}>
           <ApiOutlined />
@@ -144,26 +176,102 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
           )}
         </span>
       ),
-      label: '锁竞争图',
+      label: '锁分析',
+      children: [
+        {
+          key: 'lock-graph',
+          icon: <ApiOutlined />,
+          label: '锁竞争图',
+        },
+        {
+          key: 'lock-deadlock',
+          icon: <LockOutlined />,
+          label: '死锁检测',
+        },
+      ],
     },
+    // 火焰图 - 提升到顶级
     {
-      key: 'flameGraph',
+      key: 'flame-graph',
       icon: <FireOutlined />,
       label: '火焰图',
     },
+    // CPU 分析 - 父节点
     {
-      key: 'cpu',
-      icon: <DashboardOutlined />,
+      key: 'cpu-analysis',
+      icon: <ThunderboltOutlined />,
       label: 'CPU 分析',
+      children: [
+        {
+          key: 'cpu-inference',
+          icon: <ThunderboltOutlined />,
+          label: 'CPU 线程推测',
+        },
+        {
+          key: 'cpu-precise',
+          icon: <DashboardOutlined />,
+          label: '精准 CPU 采集',
+        },
+      ],
     },
   ];
 
+  // 辅助：根据 key 查找菜单项
+  const findMenuItem = (items: typeof menuItems, key: string): typeof menuItems[0] | null => {
+    for (const item of items) {
+      if (item.key === key) return item;
+      if (item.children) {
+        const found = findMenuItem(item.children, key);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  // 菜单点击处理
+  const handleMenuClick = ({ key }: { key: string }) => {
+    const item = findMenuItem(menuItems, key);
+    if (item?.children) {
+      // 父级菜单：导航到第一个子项
+      setActiveTab(item.children[0].key);
+    } else {
+      setActiveTab(key);
+    }
+  };
+  // 面包屑：找到当前 activeTab 对应的面包屑路径
+  const getBreadcrumbItems = () => {
+    const items: { title: React.ReactNode }[] = [
+      { title: <span style={{ color: '#999' }}>分析结果</span> },
+    ];
+    // 找到当前 tab 在菜单树中的路径
+    const findPath = (items: typeof menuItems, targetKey: string, path: string[] = []): string[] | null => {
+      for (const item of items) {
+        if (item.key === targetKey) return [...path, item.key];
+        if (item.children) {
+          const found = findPath(item.children, targetKey, [...path, item.key]);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const path = findPath(menuItems, activeTab);
+    if (path) {
+      path.forEach(key => {
+        items.push({ title: <span style={{ color: key === activeTab ? '#1a1a1a' : '#999' }}>{MENU_BREADCRUMB[key] || key}</span> });
+      });
+    }
+    return items;
+  };
+
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      {/* 左侧菜单 */}
-      <div
+    <Layout style={{ minHeight: '100vh' }}>
+      {/* 左侧侧边栏 */}
+      <Sider
+        collapsible
+        collapsed={collapsed}
+        onCollapse={setCollapsed}
+        width={220}
         style={{
-          width: 200,
           background: '#fff',
           boxShadow: '1px 0 0 #f0f0f0',
           position: 'fixed',
@@ -171,40 +279,42 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
           top: 0,
           height: '100vh',
           overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
           zIndex: 100,
         }}
+        theme="light"
       >
         {/* Logo / 标题 */}
         <div
           style={{
-            padding: '16px 20px 14px',
+            padding: collapsed ? '16px 0 14px' : '16px 20px 14px',
             borderBottom: '1px solid #f0f0f0',
             display: 'flex',
             alignItems: 'center',
             gap: 10,
             flexShrink: 0,
+            justifyContent: collapsed ? 'center' : 'flex-start',
           }}
         >
-          <FileSearchOutlined style={{ fontSize: 20, color: '#1677ff' }} />
-          <Title level={4} style={{ margin: 0, fontSize: 16, color: '#1a1a1a' }}>
-            JStack Insight
-          </Title>
+          <FileSearchOutlined style={{ fontSize: 20, color: '#1677ff', flexShrink: 0 }} />
+          {!collapsed && (
+            <Title level={4} style={{ margin: 0, fontSize: 16, color: '#1a1a1a' }}>
+              JStack Insight
+            </Title>
+          )}
         </div>
 
         {/* 导航菜单 */}
         <Menu
           mode="inline"
           selectedKeys={[activeTab]}
-          onClick={({ key }) => setActiveTab(key)}
+          onClick={handleMenuClick}
           items={menuItems}
-          style={{ borderRight: 0, flex: 1 }}
+          style={{ borderRight: 0 }}
         />
-      </div>
+      </Sider>
 
       {/* 右侧内容区 */}
-      <div style={{ marginLeft: 200, flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <Layout style={{ marginLeft: collapsed ? 80 : 220, transition: 'margin-left 0.2s' }}>
         {/* 顶部栏 */}
         <div
           style={{
@@ -216,6 +326,9 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
             justifyContent: 'space-between',
             height: 48,
             flexShrink: 0,
+            position: 'sticky',
+            top: 0,
+            zIndex: 99,
           }}
         >
           <Space size={12}>
@@ -239,14 +352,8 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
             <Breadcrumb
               style={{ fontSize: 13 }}
               separator="/"
-            >
-              <Breadcrumb.Item>
-                <span style={{ color: '#999' }}>分析结果</span>
-              </Breadcrumb.Item>
-              <Breadcrumb.Item>
-                <span style={{ color: '#1a1a1a', fontWeight: 600 }}>{TAB_NAMES[activeTab]}</span>
-              </Breadcrumb.Item>
-            </Breadcrumb>
+              items={getBreadcrumbItems()}
+            />
           </Space>
           <Space size={8}>
             {deadlockChain.detected && (
@@ -263,18 +370,19 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
         </div>
 
         {/* 主内容 */}
-        <div
+        <Content
           style={{
             flex: 1,
             padding: 20,
             background: '#f5f5f5',
             overflow: 'auto',
+            minHeight: 'calc(100vh - 48px)',
           }}
         >
           {renderTabContent()}
-        </div>
-      </div>
-    </div>
+        </Content>
+      </Layout>
+    </Layout>
   );
 };
 

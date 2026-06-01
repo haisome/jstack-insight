@@ -8,7 +8,7 @@ import java.util.List;
 /**
  * top -H 线程 CPU 分析结果 VO
  *
- * <p>解析 top -H 输出文件，与 jstack 线程进行 TID(十进制) <-> NID(十六进制) 关联，
+ * <p>解析 top -H 输出文件，与 jstack 线程进行 PID(十进制) <-> NID(十六进制) 关联，
  * 返回各线程的精确 CPU 占用率。
  *
  * @author zeng
@@ -41,7 +41,7 @@ public class TopCpuVO {
         /** 线程名（来自 jstack） */
         private String name;
         /** 系统线程 ID（十进制，来自 top PID 列） */
-        private int tid;
+        private int pid;
         /** nid（十六进制，来自 jstack） */
         private String nid;
         /** CPU 占用率（来自 top %CPU 列） */

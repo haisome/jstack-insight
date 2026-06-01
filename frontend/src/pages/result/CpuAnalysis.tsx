@@ -28,6 +28,8 @@ interface CpuAnalysisProps {
   /** 精准 CPU 分析的 top 文件列表（由 ResultPage 提升状态） */
   cpuTopFileList: UploadFile[];
   setCpuTopFileList: (v: UploadFile[]) => void;
+  /** 视图模式：inference=CPU线程推测，precise=精准CPU采集 */
+  view?: 'inference' | 'precise';
 }
 
 // ========== 栈跟踪还原辅助（复用 Threads.tsx 的 buildRawStackLines） ==========
@@ -216,7 +218,7 @@ const EVALUATION_METHOD = (
 /** CPU 关联原理说明 */
 const CPU_CORRELATION_PRINCIPLE = (
   <div style={{ maxWidth: 560, fontSize: 13 }}>
-    <p style={{ margin: '0 0 8px', fontWeight: 600 }}>TID ↔ NID 关联原理</p>
+    <p style={{ margin: '0 0 8px', fontWeight: 600 }}>PID ↔ NID 关联原理</p>
     <p style={{ margin: '0 0 8px', color: '#666' }}>
       Linux 系统中，每个 Java 线程对应一个系统原生线程（LWP）。
       <code>top -H</code> 和 <code>jstack</code> 都能看到这个线程，只是标识方式不同：
@@ -338,13 +340,13 @@ const PreciseCpuCollection: React.FC<{
       ),
     },
     {
-      title: 'TID',
-      key: 'tid',
+      title: '线程ID',
+      key: 'pid',
       width: 140,
       render: (_: unknown, record) => (
         <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#666' }}>
-          <Tooltip title="top 中的十进制 PID">
-            <span>{record.tid}</span>
+            <Tooltip title="top 中的十进制 PID">
+            <span>{record.pid}</span>
           </Tooltip>
           <span style={{ color: '#bbb', margin: '0 4px' }}>↔</span>
           <Tooltip title="jstack 中的十六进制 nid">
@@ -411,7 +413,7 @@ const PreciseCpuCollection: React.FC<{
         </span>
       }
       extra={
-        <Popover content={CPU_CORRELATION_PRINCIPLE} title="TID ↔ NID 关联原理" placement="topRight" trigger="hover">
+        <Popover content={CPU_CORRELATION_PRINCIPLE} title="PID ↔ NID 关联原理" placement="topRight" trigger="hover">
           <QuestionCircleOutlined style={{ color: '#999', cursor: 'pointer' }} />
         </Popover>
       }
@@ -421,8 +423,8 @@ const PreciseCpuCollection: React.FC<{
       {!topResult && (
         <div style={{ fontSize: 13, color: '#666', lineHeight: 2 }}>
           <p style={{ margin: '0 0 12px' }}>
-            以上分析基于单次 jstack 快照的推测，无法精确量化 CPU 占用率。
-            上传 <Text strong>top -H</Text> 文件后，通过 TID(十进制) ↔ NID(十六进制) 关联，
+            基于单次 jstack 快照的推测，无法精确量化 CPU 占用率。
+            上传 <Text strong>top -H</Text> 文件后，通过 TOP的PID(十进制) ↔ JStack的NID(十六进制) 关联，
             获得每个线程的精确 CPU 占用率。
           </p>
 
@@ -579,6 +581,7 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
   setCpuTopResult,
   cpuTopFileList,
   setCpuTopFileList,
+  view = 'inference',
 }) => {
   // ========== 状态管理 ==========
   const [selectedThread, setSelectedThread] = useState<CpuThreadResult | null>(null);
@@ -793,148 +796,152 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
 
   return (
     <div>
-      {/* 统计概览 */}
-      <Card
-        title={
-          <Title level={5} style={{ margin: 0 }}>
-            CPU 分析 — 线程消耗推测
-          </Title>
-        }
-        extra={
-          <Popover content={EVALUATION_METHOD} title="评估方法说明" placement="topRight" trigger="hover">
-            <QuestionCircleOutlined style={{ color: '#999', cursor: 'pointer' }} />
-          </Popover>
-        }
-        style={{ marginBottom: 16 }}
-      >
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <Tag color="blue" style={{ fontSize: 13, padding: '4px 12px' }}>
-            RUNNABLE 线程：{stats.total}
-          </Tag>
-          {cpuConsuming > 0 && (
-            <Tag color="red" style={{ fontSize: 13, padding: '4px 12px' }}>
-              疑似 CPU 消耗：{cpuConsuming}
-            </Tag>
-          )}
-          {stats.counts.io_wait > 0 && (
-            <Tag color="default" style={{ fontSize: 13, padding: '4px 12px' }}>
-              I/O 等待（非 CPU）：{stats.counts.io_wait}
-            </Tag>
-          )}
-          {stats.counts.gc > 0 && (
-            <Tag color="cyan" style={{ fontSize: 13, padding: '4px 12px' }}>
-              GC/系统：{stats.counts.gc}
-            </Tag>
-          )}
-        </div>
-
-        {cpuConsuming > 0 && (
-          <Alert
-            type="warning"
-            showIcon
-            message={`发现 ${cpuConsuming} 个疑似 CPU 消耗线程`}
-            style={{ marginTop: 12, borderRadius: 8 }}
-          />
-        )}
-      </Card>
-
-      {/* 评估结果表格 */}
-      <Card
-        title={
-          <Title level={5} style={{ margin: 0 }}>
-            RUNNABLE 线程评估详情
-          </Title>
-        }
-      >
-        <Table<CpuThreadResult>
-          columns={columns}
-          dataSource={evalResults.map((r, i) => ({ ...r, key: r.thread.nid || r.thread.name || `${i}` }))}
-          size="small"
-          pagination={{
-            defaultPageSize: 15,
-            showSizeChanger: true,
-            pageSizeOptions: [10, 15, 20, 50],
-            showTotal: (total) => `共 ${total} 条`,
-            size: 'small',
-          }}
-          scroll={{ x: 900 }}
-          rowClassName={(record) => {
-            if (record.category === 'cpu_consuming') return 'cpu-row-high';
-            if (record.category === 'io_wait' || record.category === 'gc') return 'cpu-row-muted';
-            return '';
-          }}
-        />
-        <style>{`
-          .cpu-row-high {
-            background: #fff2f0 !important;
-          }
-          .cpu-row-high:hover td {
-            background: #ffe7e2 !important;
-          }
-          .cpu-row-muted {
-            background: #fafafa !important;
-            opacity: 0.75;
-          }
-          .cpu-row-muted:hover td {
-            background: #f5f5f5 !important;
-            opacity: 1;
-          }
-        `}</style>
-      </Card>
-
-      {/* 精准 CPU 采集 */}
-      <PreciseCpuCollection
-        threads={threads}
-        jstackRawFile={jstackRawFile}
-        topResult={cpuTopResult}
-        setTopResult={setCpuTopResult}
-        topFileList={cpuTopFileList}
-        setTopFileList={setCpuTopFileList}
-      />
-
-      {/* 线程详情弹窗 */}
-      <Modal
-        title={selectedThread ? `线程详情 - ${selectedThread.thread.name}` : '线程详情'}
-        open={!!selectedThread}
-        onCancel={() => setSelectedThread(null)}
-        footer={null}
-        width={800}
-      >
-        {selectedThread && (
-          <div>
-            <p><strong>线程名：</strong>{selectedThread.thread.name}</p>
-            <p><strong>状态：</strong>{selectedThread.thread.state}</p>
-            <p><strong>分类：</strong>
-              <Tag color={CATEGORY_CONFIG[selectedThread.category].tagColor} icon={CATEGORY_CONFIG[selectedThread.category].icon}>
-                {CATEGORY_CONFIG[selectedThread.category].label}
+      {view === 'inference' && (
+        <>
+          {/* 统计概览 */}
+          <Card
+            title={
+              <Title level={5} style={{ margin: 0 }}>
+                CPU 分析 — 线程消耗推测
+              </Title>
+            }
+            extra={
+              <Popover content={EVALUATION_METHOD} title="评估方法说明" placement="topRight" trigger="hover">
+                <QuestionCircleOutlined style={{ color: '#999', cursor: 'pointer' }} />
+              </Popover>
+            }
+            style={{ marginBottom: 16 }}
+          >
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <Tag color="blue" style={{ fontSize: 13, padding: '4px 12px' }}>
+                RUNNABLE 线程：{stats.total}
               </Tag>
-            </p>
-            <p><strong>评估理由：</strong></p>
-            <ul style={{ color: '#666', lineHeight: 1.8 }}>
-              {selectedThread.reasons.map((r, i) => (
-                <li key={i}>{r}</li>
-              ))}
-            </ul>
-            <p><strong>栈跟踪：</strong></p>
-            <pre style={{ background: '#1e1e1e', color: '#d4d4d4', padding: 16, borderRadius: 8, fontSize: 12, lineHeight: 1.8, maxHeight: 400, overflow: 'auto', fontFamily: "'Fira Code', 'Consolas', 'Courier New', monospace" }}>
-              {buildRawStackLines(selectedThread.thread).map((line, i) => {
-                const isAtLine = line.startsWith('at ');
-                const isWaitingLine = line.startsWith('- waiting to lock') || line.startsWith('- parking to wait');
-                const isLockedLine = line.startsWith('- locked');
-                let color = '#d4d4d4';
-                if (isAtLine) color = '#dcdcaa';
-                else if (isLockedLine) color = '#569cd6';
-                else if (isWaitingLine) color = '#ce9178';
-                return (
-                  <div key={i} style={{ color }}>
-                    {line}
-                  </div>
-                );
-              })}
-            </pre>
-          </div>
-        )}
-      </Modal>
+              {cpuConsuming > 0 && (
+                <Tag color="red" style={{ fontSize: 13, padding: '4px 12px' }}>
+                  疑似 CPU 消耗：{cpuConsuming}
+                </Tag>
+              )}
+              {stats.counts.io_wait > 0 && (
+                <Tag color="default" style={{ fontSize: 13, padding: '4px 12px' }}>
+                  I/O 等待（非 CPU）：{stats.counts.io_wait}
+                </Tag>
+              )}
+              {stats.counts.gc > 0 && (
+                <Tag color="cyan" style={{ fontSize: 13, padding: '4px 12px' }}>
+                  GC/系统：{stats.counts.gc}
+                </Tag>
+              )}
+            </div>
+
+            {cpuConsuming > 0 && (
+              <Alert
+                type="warning"
+                showIcon
+                message={`发现 ${cpuConsuming} 个疑似 CPU 消耗线程，此方法为推测性分析，结果仅供排查参考。`}
+                style={{ marginTop: 12, borderRadius: 8 }}
+              />
+            )}
+          </Card>
+
+          {/* 评估结果表格 */}
+          <Card
+            title={
+              <Title level={5} style={{ margin: 0 }}>
+                RUNNABLE 线程评估详情
+              </Title>
+            }
+          >
+            <Table<CpuThreadResult>
+              columns={columns}
+              dataSource={evalResults.map((r, i) => ({ ...r, key: r.thread.nid || r.thread.name || `${i}` }))}
+              size="small"
+              pagination={{
+                defaultPageSize: 15,
+                showSizeChanger: true,
+                pageSizeOptions: [10, 15, 20, 50],
+                showTotal: (total) => `共 ${total} 条`,
+                size: 'small',
+              }}
+              scroll={{ x: 900 }}
+              rowClassName={(record) => {
+                if (record.category === 'cpu_consuming') return 'cpu-row-high';
+                if (record.category === 'io_wait' || record.category === 'gc') return 'cpu-row-muted';
+                return '';
+              }}
+            />
+            <style>{`
+              .cpu-row-high {
+                background: #fff2f0 !important;
+              }
+              .cpu-row-high:hover td {
+                background: #ffe7e2 !important;
+              }
+              .cpu-row-muted {
+                background: #fafafa !important;
+                opacity: 0.75;
+              }
+              .cpu-row-muted:hover td {
+                background: #f5f5f5 !important;
+                opacity: 1;
+              }
+            `}</style>
+          </Card>
+
+          {/* 线程详情弹窗 */}
+          <Modal
+            title={selectedThread ? `线程详情 - ${selectedThread.thread.name}` : '线程详情'}
+            open={!!selectedThread}
+            onCancel={() => setSelectedThread(null)}
+            footer={null}
+            width={800}
+          >
+            {selectedThread && (
+              <div>
+                <p><strong>线程名：</strong>{selectedThread.thread.name}</p>
+                <p><strong>状态：</strong>{selectedThread.thread.state}</p>
+                <p><strong>分类：</strong>
+                  <Tag color={CATEGORY_CONFIG[selectedThread.category].tagColor} icon={CATEGORY_CONFIG[selectedThread.category].icon}>
+                    {CATEGORY_CONFIG[selectedThread.category].label}
+                  </Tag>
+                </p>
+                <p><strong>评估理由：</strong></p>
+                <ul style={{ color: '#666', lineHeight: 1.8 }}>
+                  {selectedThread.reasons.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+                <p><strong>栈跟踪：</strong></p>
+                <pre style={{ background: '#1e1e1e', color: '#d4d4d4', padding: 16, borderRadius: 8, fontSize: 12, lineHeight: 1.8, maxHeight: 400, overflow: 'auto', fontFamily: "'Fira Code', 'Consolas', 'Courier New', monospace" }}>
+                  {buildRawStackLines(selectedThread.thread).map((line, i) => {
+                    const isAtLine = line.startsWith('at ');
+                    const isWaitingLine = line.startsWith('- waiting to lock') || line.startsWith('- parking to wait');
+                    const isLockedLine = line.startsWith('- locked');
+                    let color = '#d4d4d4';
+                    if (isAtLine) color = '#dcdcaa';
+                    else if (isLockedLine) color = '#569cd6';
+                    else if (isWaitingLine) color = '#ce9178';
+                    return (
+                      <div key={i} style={{ color }}>
+                        {line}
+                      </div>
+                    );
+                  })}
+                </pre>
+              </div>
+            )}
+          </Modal>
+        </>
+      )}
+      {view === 'precise' && (
+        <PreciseCpuCollection
+          threads={threads}
+          jstackRawFile={jstackRawFile}
+          topResult={cpuTopResult}
+          setTopResult={setCpuTopResult}
+          topFileList={cpuTopFileList}
+          setTopFileList={setCpuTopFileList}
+        />
+      )}
     </div>
   );
 };

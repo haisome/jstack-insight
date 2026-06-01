@@ -622,11 +622,16 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
 
 // ========== 导出主组件 ==========
 
-const Threads: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
+interface ThreadsProps {
+  threads: ThreadSummary[];
+  view?: 'list' | 'groups';
+}
+
+const Threads: React.FC<ThreadsProps> = ({ threads, view = 'list' }) => {
   return (
     <div>
-      <StackGroupAnalysis threads={threads} />
-      <ThreadList threads={threads} />
+      {view === 'groups' && <StackGroupAnalysis threads={threads} />}
+      {view === 'list' && <ThreadList threads={threads} />}
     </div>
   );
 };

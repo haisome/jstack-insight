@@ -142,7 +142,7 @@ public class AnalysisController {
                     totalCpu += cpu;
                     threadCpuInfos.add(TopCpuVO.ThreadCpuInfo.builder()
                             .name(threadSummary.getName())
-                            .tid(Integer.parseInt(nid.startsWith("0x") ? nid.substring(2) : nid, 16))
+                            .pid(Integer.parseInt(nid.startsWith("0x") ? nid.substring(2) : nid, 16))
                             .nid(nid)
                             .cpuPercent(cpu)
                             .state(threadSummary.getState())

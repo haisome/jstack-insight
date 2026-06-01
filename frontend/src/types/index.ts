@@ -87,7 +87,7 @@ export interface DeadlockChainVO {
 
 export interface TopCpuThreadInfo {
   name: string;
-  tid: number;
+  pid: number;
   nid: string;
   cpuPercent: number;
   state: string;
