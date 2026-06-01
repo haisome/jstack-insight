@@ -38,7 +38,8 @@ public class TopFileParser {
      * 其中 %CPU 可能为浮点数
      */
     private static final Pattern TOP_LINE_PATTERN = Pattern.compile(
-            "^\\s*(\\d+)\\s+\\S+\\s+\\d+\\s+(-?\\d+)\\s+\\d+\\s+\\d+\\s+\\d+\\s+(\\S)\\s+([\\d.]+)"
+            "^\\s*(\\d+)\\s+\\S+\\s+\\d+\\s+-?\\d+\\s+[\\d.]+[kmgt]?\\s+[\\d.]+[kmgt]?\\s+[\\d.]+[kmgt]?\\s+[SRZTDWI]\\s+([\\d.]+)",
+            Pattern.MULTILINE
     );
 
     /**
@@ -75,7 +76,7 @@ public class TopFileParser {
             if (m.find()) {
                 try {
                     int pid = Integer.parseInt(m.group(1));
-                    double cpu = Double.parseDouble(m.group(4));
+                    double cpu = Double.parseDouble(m.group(2));
                     result.put(pid, cpu);
                 } catch (NumberFormatException ignored) {
                     // 跳过无法解析的行
@@ -117,7 +118,8 @@ public class TopFileParser {
             String hexNid = normalizeNid(Integer.toHexString(decimalPid));
             ThreadInfo matched = nidMap.get(hexNid);
             if (matched != null) {
-                cpuByNid.put(matched.getNid(), entry.getValue());
+                // key 统一为小写无 0x 前缀格式，与 AnalysisController 查询时使用的格式一致
+                cpuByNid.put(normalizeNid(matched.getNid()), entry.getValue());
             }
         }
 

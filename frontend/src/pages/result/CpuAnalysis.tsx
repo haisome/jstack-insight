@@ -22,6 +22,12 @@ interface CpuAnalysisProps {
   threads: ThreadSummary[];
   /** jstack 原始文件对象（用于精准 CPU 关联时重新上传） */
   jstackRawFile?: File | null;
+  /** 精准 CPU 分析结果（由 ResultPage 提升状态） */
+  cpuTopResult: TopCpuVO | null;
+  setCpuTopResult: (v: TopCpuVO | null) => void;
+  /** 精准 CPU 分析的 top 文件列表（由 ResultPage 提升状态） */
+  cpuTopFileList: UploadFile[];
+  setCpuTopFileList: (v: UploadFile[]) => void;
 }
 
 // ========== 已知的 Native I/O 等待方法（伪装 RUNNABLE） ==========
@@ -182,14 +188,23 @@ const COMMAND_DEMO_TOP = 'top -H -p <pid> -n 1 -b > top_threads.txt';
 const COMMAND_DEMO_JSTACK = 'jstack -l <pid> > jstack.txt';
 const COMMAND_DEMO_COMBINED = COMMAND_DEMO_TOP + ' && ' + COMMAND_DEMO_JSTACK;
 
-const PreciseCpuCollection: React.FC<{ threads: ThreadSummary[]; jstackRawFile?: File | null }> = ({
+const PreciseCpuCollection: React.FC<{
+  threads: ThreadSummary[];
+  jstackRawFile?: File | null;
+  topResult: TopCpuVO | null;
+  setTopResult: (v: TopCpuVO | null) => void;
+  topFileList: UploadFile[];
+  setTopFileList: (v: UploadFile[]) => void;
+}> = ({
   threads,
   jstackRawFile,
+  topResult,
+  setTopResult,
+  topFileList,
+  setTopFileList,
 }) => {
   const { message } = App.useApp();
-  const [topFileList, setTopFileList] = useState<UploadFile[]>([]);
   const [loading, setLoading] = useState(false);
-  const [topResult, setTopResult] = useState<TopCpuVO | null>(null);
 
   const handleAnalyze = async () => {
     if (topFileList.length === 0) {
@@ -500,7 +515,14 @@ const PreciseCpuCollection: React.FC<{ threads: ThreadSummary[]; jstackRawFile?:
   );
 };
 
-const CpuAnalysis: React.FC<CpuAnalysisProps> = ({ threads, jstackRawFile }) => {
+const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
+  threads,
+  jstackRawFile,
+  cpuTopResult,
+  setCpuTopResult,
+  cpuTopFileList,
+  setCpuTopFileList,
+}) => {
   // ========== 核心评估逻辑 ==========
   const evalResults = useMemo((): CpuThreadResult[] => {
     const runnable = threads.filter((t) => t.state === 'RUNNABLE');
@@ -806,7 +828,14 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({ threads, jstackRawFile }) => 
       </Card>
 
       {/* 精准 CPU 采集 */}
-      <PreciseCpuCollection threads={threads} jstackRawFile={jstackRawFile} />
+      <PreciseCpuCollection
+        threads={threads}
+        jstackRawFile={jstackRawFile}
+        topResult={cpuTopResult}
+        setTopResult={setCpuTopResult}
+        topFileList={cpuTopFileList}
+        setTopFileList={setCpuTopFileList}
+      />
     </div>
   );
 };

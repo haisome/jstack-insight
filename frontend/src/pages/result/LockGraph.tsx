@@ -57,8 +57,21 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph }) => {
   const [hoveredNode, setHoveredNode] = useState<SimNode | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<SimEdge | null>(null);
   const [currentZoom, setCurrentZoom] = useState(1);
+  const [containerWidth, setContainerWidth] = useState(0);
 
   const { nodes, edges, hasDeadlock, deadlockChains } = lockGraph;
+
+  // ResizeObserver：跟踪容器宽度，宽度为 0 时不初始化 D3（容器不可见）
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      if (w > 0) setContainerWidth(w);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
@@ -98,7 +111,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph }) => {
   }, []);
 
   useEffect(() => {
-    if (!svgRef.current || nodes.length === 0) return;
+    if (!svgRef.current || nodes.length === 0 || containerWidth === 0) return;
 
     // 动态导入 D3（避免 SSR 问题）
     import('d3').then((d3) => {
@@ -348,8 +361,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph }) => {
         simulation.stop();
       };
     });
-  }, [nodes, edges]);
-
+  }, [nodes, edges, containerWidth]);
   if (nodes.length === 0) {
     return (
       <Card title={<Title level={5} style={{ margin: 0 }}>锁竞争图</Title>}>

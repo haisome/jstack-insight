@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Menu, Button, Space, Typography, Tag, Breadcrumb } from 'antd';
+import type { UploadFile } from 'antd';
 import {
   HomeOutlined,
   UnorderedListOutlined,
@@ -15,7 +16,7 @@ import Threads from './Threads';
 import LockGraph from './LockGraph';
 import FlameGraph from './FlameGraph';
 import CpuAnalysis from './CpuAnalysis';
-import type { AnalysisResultVO } from '../../types';
+import type { AnalysisResultVO, TopCpuVO } from '../../types';
 
 const { Title } = Typography;
 
@@ -35,23 +36,47 @@ const TAB_NAMES: Record<string, string> = {
 
 const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }) => {
   const [activeTab, setActiveTab] = useState('overview');
+  // CPU 分析状态：提升到 ResultPage 层级，切换 tab 时不丢失
+  const [cpuTopResult, setCpuTopResult] = useState<TopCpuVO | null>(null);
+  const [cpuTopFileList, setCpuTopFileList] = useState<UploadFile[]>([]);
   const { threadState, lockGraph, flameGraph, deadlockChain } = result;
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'overview':
-        return <Overview threadState={threadState} />;
-      case 'threads':
-        return <Threads threads={threadState.threads} />;
-      case 'lockGraph':
-        return <LockGraph lockGraph={lockGraph} />;
-      case 'flameGraph':
-        return <FlameGraph flameGraph={flameGraph} />;
-      case 'cpu':
-        return <CpuAnalysis threads={threadState.threads} jstackRawFile={jstackRawFile} />;
-      default:
-        return <Overview threadState={threadState} />;
-    }
+  // 所有 Tab 面板常驻挂载，仅通过 CSS 控制显隐，切换 Tab 时状态不丢失
+  const renderTabContent = () => {
+    const overviewStyle: React.CSSProperties = {
+      display: activeTab === 'overview' ? 'block' : 'none',
+    };
+    const threadsStyle: React.CSSProperties = {
+      display: activeTab === 'threads' ? 'block' : 'none',
+    };
+    const lockGraphStyle: React.CSSProperties = {
+      display: activeTab === 'lockGraph' ? 'block' : 'none',
+    };
+    const flameGraphStyle: React.CSSProperties = {
+      display: activeTab === 'flameGraph' ? 'block' : 'none',
+    };
+    const cpuStyle: React.CSSProperties = {
+      display: activeTab === 'cpu' ? 'block' : 'none',
+    };
+
+    return (
+      <>
+        <div style={overviewStyle}><Overview threadState={threadState} /></div>
+        <div style={threadsStyle}><Threads threads={threadState.threads} /></div>
+        <div style={lockGraphStyle}><LockGraph lockGraph={lockGraph} /></div>
+        <div style={flameGraphStyle}><FlameGraph flameGraph={flameGraph} /></div>
+        <div style={cpuStyle}>
+          <CpuAnalysis
+            threads={threadState.threads}
+            jstackRawFile={jstackRawFile}
+            cpuTopResult={cpuTopResult}
+            setCpuTopResult={setCpuTopResult}
+            cpuTopFileList={cpuTopFileList}
+            setCpuTopFileList={setCpuTopFileList}
+          />
+        </div>
+      </>
+    );
   };
 
   // 菜单项（带角标）
@@ -249,7 +274,7 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
             overflow: 'auto',
           }}
         >
-          {renderContent()}
+          {renderTabContent()}
         </div>
       </div>
     </div>
