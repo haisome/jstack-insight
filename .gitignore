@@ -34,3 +34,4 @@ backend/target/
 # 上传的分析文件（可选）
 # uploads/
 # analysis/
+/backend/src/main/resources/static/**

@@ -23,7 +23,7 @@ import java.util.Map;
  * jstack 分析接口
  *
  * <p>提供上传并解析 jstack 文件的 REST API。
- * Swagger UI：http://localhost:8080/swagger-ui.html
+ * Swagger UI：http://localhost:9595/swagger-ui.html
  *
  * @author zeng
  */

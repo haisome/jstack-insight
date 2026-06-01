@@ -5,7 +5,7 @@ import type { ApiResult, AnalysisResultVO, TopCpuVO } from '../types';
  * Axios 实例配置
  */
 const http = axios.create({
-  baseURL: process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080',
+  baseURL: process.env.REACT_APP_API_BASE_URL || 'http://localhost:9595',
   timeout: 60000,
 });
 

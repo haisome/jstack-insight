@@ -5,10 +5,11 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "build:prod": "node scripts/build-prod.js",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
-  "proxy": "http://localhost:8080",
+  "proxy": "http://localhost:9595",
   "dependencies": {
     "@ant-design/charts": "^2.2.0",
     "@ant-design/icons": "^5.3.0",
