@@ -259,9 +259,6 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
                 存在锁竞争
               </Tag>
             )}
-            <Tag color="blue" style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, fontWeight: 500 }}>
-              {threadState.totalThreads} 线程
-            </Tag>
           </Space>
         </div>
 
