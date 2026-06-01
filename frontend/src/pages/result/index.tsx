@@ -65,9 +65,9 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
       case 'thread-groups':
         return <Threads threads={threadState.threads} view="groups" />;
       case 'lock-graph':
-        return <LockGraph lockGraph={lockGraph} />;
+        return <LockGraph lockGraph={lockGraph} threads={threadState.threads} />;
       case 'lock-deadlock':
-        return <LockGraph lockGraph={lockGraph} />;
+        return <LockGraph lockGraph={lockGraph} threads={threadState.threads} />;
       case 'flame-graph':
         return <FlameGraph flameGraph={flameGraph} />;
       case 'cpu-inference':

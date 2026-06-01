@@ -264,6 +264,16 @@ const PreciseCpuCollection: React.FC<{
 }) => {
   const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
+  const [selectedPreciseThread, setSelectedPreciseThread] = useState<{ topInfo: TopCpuThreadInfo; thread: ThreadSummary } | null>(null);
+
+  // 构建 nid -> ThreadSummary 查找映射（用于点击线程名时关联完整栈信息）
+  const threadByNid = useMemo(() => {
+    const map = new Map<string, ThreadSummary>();
+    threads.forEach((t) => {
+      if (t.nid) map.set(t.nid, t);
+    });
+    return map;
+  }, [threads]);
 
   const handleAnalyze = async () => {
     if (topFileList.length === 0) {
@@ -330,14 +340,30 @@ const PreciseCpuCollection: React.FC<{
       dataIndex: 'name',
       key: 'name',
       ellipsis: true,
-      render: (name: string, record) => (
-        <Tooltip title={name}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: "'Menlo,Monaco,Consolas',monospace", fontSize: 12 }}>
-            {record.inDeadlock && <BugOutlined style={{ color: '#ff4d4f' }} />}
-            {name}
-          </span>
-        </Tooltip>
-      ),
+      render: (name: string, record: TopCpuThreadInfo) => {
+        const matched = threadByNid.get(record.nid);
+        return (
+          <Tooltip title={name}>
+            <span
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontFamily: "'Menlo,Monaco,Consolas',monospace",
+                fontSize: 12,
+                cursor: matched ? 'pointer' : 'default',
+                color: matched ? '#1677ff' : undefined,
+              }}
+              onClick={() => {
+                if (matched) setSelectedPreciseThread({ topInfo: record, thread: matched });
+              }}
+            >
+              {record.inDeadlock && <BugOutlined style={{ color: '#ff4d4f' }} />}
+              {name}
+            </span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: '线程ID',
@@ -570,6 +596,83 @@ const PreciseCpuCollection: React.FC<{
           )}
         </div>
       )}
+      {/* 线程详情弹窗 */}
+      <Modal
+        title={selectedPreciseThread ? `线程详情 - ${selectedPreciseThread.topInfo.name}` : '线程详情'}
+        open={!!selectedPreciseThread}
+        onCancel={() => setSelectedPreciseThread(null)}
+        footer={null}
+        width={800}
+      >
+        {selectedPreciseThread && (
+          <div>
+            <p><strong>线程名：</strong>
+              <span style={{ fontFamily: "'Menlo,Monaco,Consolas',monospace", fontSize: 13 }}>{selectedPreciseThread.topInfo.name}</span>
+            </p>
+            <p>
+              <strong>CPU 占用：</strong>
+              <span style={{
+                fontWeight: 700,
+                color: selectedPreciseThread.topInfo.cpuPercent > 50 ? '#ff4d4f'
+                  : selectedPreciseThread.topInfo.cpuPercent > 20 ? '#fa8c16'
+                  : selectedPreciseThread.topInfo.cpuPercent > 5 ? '#1677ff' : '#52c41a',
+                fontSize: 15,
+              }}>
+                {selectedPreciseThread.topInfo.cpuPercent.toFixed(1)}%
+              </span>
+            </p>
+            <p>
+              <strong>线程ID：</strong>
+              <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#666' }}>
+                PID {selectedPreciseThread.topInfo.pid}
+                <span style={{ color: '#bbb', margin: '0 4px' }}>↔</span>
+                nid {selectedPreciseThread.topInfo.nid}
+              </span>
+            </p>
+            <p>
+              <strong>状态：</strong>
+              <Tag
+                color={selectedPreciseThread.topInfo.inDeadlock ? '#ff4d4f'
+                  : (selectedPreciseThread.topInfo.state === 'RUNNABLE' ? 'blue'
+                    : selectedPreciseThread.topInfo.state === 'BLOCKED' ? 'red' : 'default')}
+                style={{ fontWeight: 600 }}
+              >
+                {selectedPreciseThread.topInfo.state}
+              </Tag>
+              {selectedPreciseThread.topInfo.inDeadlock && (
+                <Tag color="#ff4d4f" icon={<BugOutlined />} style={{ marginLeft: 4 }}>死锁</Tag>
+              )}
+            </p>
+            <p><strong>栈跟踪：</strong></p>
+            <pre style={{
+              background: '#1e1e1e',
+              color: '#d4d4d4',
+              padding: 16,
+              borderRadius: 8,
+              fontSize: 12,
+              lineHeight: 1.8,
+              maxHeight: 400,
+              overflow: 'auto',
+              fontFamily: "'Fira Code', 'Consolas', 'Courier New', monospace",
+            }}>
+              {buildRawStackLines(selectedPreciseThread.thread).map((line, i) => {
+                const isAtLine = line.startsWith('at ');
+                const isWaitingLine = line.startsWith('- waiting to lock') || line.startsWith('- parking to wait');
+                const isLockedLine = line.startsWith('- locked');
+                let color = '#d4d4d4';
+                if (isAtLine) color = '#dcdcaa';
+                else if (isLockedLine) color = '#569cd6';
+                else if (isWaitingLine) color = '#ce9178';
+                return (
+                  <div key={i} style={{ color }}>
+                    {line}
+                  </div>
+                );
+              })}
+            </pre>
+          </div>
+        )}
+      </Modal>
     </Card>
   );
 };

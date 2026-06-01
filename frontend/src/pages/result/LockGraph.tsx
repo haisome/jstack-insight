@@ -1,12 +1,13 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Card, Typography, Alert, Empty, Tooltip, Badge, Space, Tag, Popover, Button } from 'antd';
+import { Card, Typography, Alert, Empty, Tooltip, Badge, Space, Tag, Popover, Button, message } from 'antd';
 import { QuestionCircleOutlined, PlusOutlined, MinusOutlined, ExpandOutlined } from '@ant-design/icons';
-import type { LockGraphVO, GraphNode, GraphEdge } from '../../types';
+import type { LockGraphVO, GraphNode, GraphEdge, ThreadSummary } from '../../types';
 
 const { Title, Text } = Typography;
 
 interface LockGraphProps {
   lockGraph: LockGraphVO;
+  threads: ThreadSummary[];
 }
 
 /**
@@ -41,7 +42,7 @@ const LOCK_HELP_CONTENT = (
   </div>
 );
 
-const LockGraph: React.FC<LockGraphProps> = ({ lockGraph }) => {
+const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const simulationRef = useRef<d3.Simulation<SimNode, SimEdge> | null>(null);
@@ -58,6 +59,43 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph }) => {
   const [hoveredEdge, setHoveredEdge] = useState<SimEdge | null>(null);
   const [currentZoom, setCurrentZoom] = useState(1);
   const [containerWidth, setContainerWidth] = useState(0);
+  const threadsRef = useRef<ThreadSummary[]>(threads);
+  threadsRef.current = threads;
+
+  // ========== 栈跟踪还原辅助（复用 CpuAnalysis / Threads 中的实现） ==========
+  function buildRawStackLines(thread: ThreadSummary): string[] {
+    const lines: string[] = [];
+    const hasWaitingLock = !!thread.waitingOnLock;
+    let waitingInserted = false;
+
+    for (let i = 0; i < thread.stackTrace.length; i++) {
+      lines.push(`at ${thread.stackTrace[i]}`);
+      if (!waitingInserted && hasWaitingLock && i === 0) {
+        waitingInserted = true;
+        let lockLine = '';
+        if (thread.state === 'BLOCKED') {
+          lockLine = '- waiting to lock';
+        } else {
+          lockLine = '- parking to wait for';
+        }
+        lockLine += `  <${thread.waitingOnLock}>`;
+        if (thread.waitingOnLockClass) {
+          lockLine += ` (a ${thread.waitingOnLockClass})`;
+        }
+        lines.push(lockLine);
+      }
+    }
+
+    thread.lockedMonitors?.forEach((addr, idx) => {
+      let line = `- locked <${addr}>`;
+      if (thread.lockedMonitorClasses?.[idx]) {
+        line += ` (a ${thread.lockedMonitorClasses[idx]})`;
+      }
+      lines.push(line);
+    });
+
+    return lines;
+  }
 
   const { nodes, edges, hasDeadlock, deadlockChains } = lockGraph;
 
@@ -336,6 +374,44 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph }) => {
             .select(d.type === 'THREAD' ? 'circle' : 'rect')
             .attr('stroke', d.inDeadlock ? '#a8071a' : '#fff')
             .attr('stroke-width', 2);
+        })
+        .on('click', function (event: MouseEvent, d: SimNode) {
+          event.stopPropagation();
+          if (d.type === 'THREAD') {
+            // 点击线程节点：复制栈信息到剪贴板
+            const currentThreads = threadsRef.current;
+            const thread = currentThreads.find(t => t.name === d.label);
+            if (thread) {
+              const stackText = buildRawStackLines(thread).join('\n');
+              navigator.clipboard.writeText(stackText).then(() => {
+                message.success(`已复制线程「${d.label}」的栈信息`);
+              }).catch(() => {
+                // 剪贴板 API 不可用时降级为 document.execCommand
+                const textarea = document.createElement('textarea');
+                textarea.value = stackText;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                message.success(`已复制线程「${d.label}」的栈信息`);
+              });
+            } else {
+              message.warning('未找到该线程的栈信息');
+            }
+          } else if (d.type === 'LOCK') {
+            // 点击锁节点：复制锁对象信息
+            navigator.clipboard.writeText(d.label).then(() => {
+              message.success(`已复制锁对象「${d.label}」`);
+            }).catch(() => {
+              const textarea = document.createElement('textarea');
+              textarea.value = d.label;
+              document.body.appendChild(textarea);
+              textarea.select();
+              document.execCommand('copy');
+              document.body.removeChild(textarea);
+              message.success(`已复制锁对象「${d.label}」`);
+            });
+          }
         });
 
       // Tick：每帧更新位置
@@ -461,6 +537,9 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph }) => {
                     ⚠ 参与死锁
                   </div>
                 )}
+                <div style={{ color: '#8cc8ff', fontSize: 11, marginTop: 6, fontStyle: 'italic' }}>
+                  💡 点击复制{tooltipInfo.node.type === 'THREAD' ? '栈信息' : '锁对象名'}
+                </div>
               </>
             )}
             {tooltipInfo.edge && (
