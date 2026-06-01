@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Card, Typography, Table, Tag, Alert, Popover, Tooltip, Empty, Upload, Button, App, Spin, Progress } from 'antd';
+import { Card, Typography, Table, Tag, Alert, Popover, Tooltip, Empty, Upload, Button, App, Spin, Progress, Modal } from 'antd';
 import {
   QuestionCircleOutlined,
   WarningOutlined,
@@ -28,6 +28,53 @@ interface CpuAnalysisProps {
   /** 精准 CPU 分析的 top 文件列表（由 ResultPage 提升状态） */
   cpuTopFileList: UploadFile[];
   setCpuTopFileList: (v: UploadFile[]) => void;
+}
+
+// ========== 栈跟踪还原辅助（复用 Threads.tsx 的 buildRawStackLines） ==========
+
+/**
+ * 还原原始 jstack 格式的调用栈行（含锁信息穿插）
+ * 例如：
+ *   at sun.misc.Unsafe.park(Native Method)
+ *   - parking to wait for  <0x00000006e9355388> (a java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject)
+ *   at java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+ */
+function buildRawStackLines(thread: ThreadSummary): string[] {
+  const lines: string[] = [];
+  const hasWaitingLock = !!thread.waitingOnLock;
+  let waitingInserted = false;
+
+  for (let i = 0; i < thread.stackTrace.length; i++) {
+    // at 帧行
+    lines.push(`at ${thread.stackTrace[i]}`);
+
+    // waiting lock 插入在第一帧之后
+    if (!waitingInserted && hasWaitingLock && i === 0) {
+      waitingInserted = true;
+      let lockLine = '';
+      if (thread.state === 'BLOCKED') {
+        lockLine = '- waiting to lock';
+      } else {
+        lockLine = '- parking to wait for';
+      }
+      lockLine += `  <${thread.waitingOnLock}>`;
+      if (thread.waitingOnLockClass) {
+        lockLine += ` (a ${thread.waitingOnLockClass})`;
+      }
+      lines.push(lockLine);
+    }
+  }
+
+  // locked monitors 追加在末尾
+  thread.lockedMonitors?.forEach((addr, idx) => {
+    let line = `- locked <${addr}>`;
+    if (thread.lockedMonitorClasses?.[idx]) {
+      line += ` (a ${thread.lockedMonitorClasses[idx]})`;
+    }
+    lines.push(line);
+  });
+
+  return lines;
 }
 
 // ========== 已知的 Native I/O 等待方法（伪装 RUNNABLE） ==========
@@ -64,13 +111,13 @@ const GC_NATIVE_PATTERNS: RegExp[] = [
   /Shenandoah/i,
 ];
 
-/** 评估结果等级 */
-type ConfidenceLevel = 'high' | 'medium' | 'low' | 'io_wait' | 'gc';
+/** 线程分类 */
+type ThreadCategory = 'cpu_consuming' | 'io_wait' | 'gc';
 
 interface CpuThreadResult {
   thread: ThreadSummary;
-  /** 推测等级 */
-  level: ConfidenceLevel;
+  /** 线程分类 */
+  category: ThreadCategory;
   /** 评估理由 */
   reasons: string[];
   /** 栈深度 */
@@ -79,7 +126,7 @@ interface CpuThreadResult {
   topFrame: string;
 }
 
-const LEVEL_CONFIG: Record<ConfidenceLevel, {
+const CATEGORY_CONFIG: Record<ThreadCategory, {
   label: string;
   color: string;
   bg: string;
@@ -87,29 +134,13 @@ const LEVEL_CONFIG: Record<ConfidenceLevel, {
   icon: React.ReactNode;
   desc: string;
 }> = {
-  high: {
-    label: '高概率',
+  cpu_consuming: {
+    label: 'CPU 消耗',
     color: '#ff4d4f',
     bg: '#fff2f0',
     tagColor: 'red',
     icon: <FireOutlined />,
-    desc: 'RUNNABLE 且非 Native I/O 等待，同时在多线程中具有相同栈帧（共享瓶颈）',
-  },
-  medium: {
-    label: '中等概率',
-    color: '#fa8c16',
-    bg: '#fff7e6',
-    tagColor: 'orange',
-    icon: <ExclamationCircleOutlined />,
-    desc: 'RUNNABLE 且非 Native I/O 等待，正常业务计算线程',
-  },
-  low: {
-    label: '低概率',
-    color: '#1677ff',
-    bg: '#e6f4ff',
-    tagColor: 'blue',
-    icon: <InfoCircleOutlined />,
-    desc: 'RUNNABLE 但可能有其他可疑模式',
+    desc: 'RUNNABLE 且非 Native I/O 等待，疑似在消耗 CPU',
   },
   io_wait: {
     label: 'I/O 等待',
@@ -131,20 +162,46 @@ const LEVEL_CONFIG: Record<ConfidenceLevel, {
 
 /** 评估问号 Tooltip 内容 */
 const EVALUATION_METHOD = (
-  <div style={{ maxWidth: 520, fontSize: 13 }}>
+  <div style={{ maxWidth: 600, fontSize: 13 }}>
     <p style={{ margin: '0 0 8px', fontWeight: 600 }}>CPU 消耗线程推测方法</p>
     <p style={{ margin: '0 0 6px', color: '#666' }}>
       基于 fastthread 的「Really Running」分析理念，jstack 中标记为 RUNNABLE 的线程并非都在消耗 CPU。
     </p>
+
     <p style={{ margin: '0 0 8px', fontWeight: 600 }}>评估步骤：</p>
     <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 2 }}>
       <li>筛选所有 <Tag color="blue" style={{ marginLeft: 4 }}>RUNNABLE</Tag> 状态的线程</li>
       <li>检查栈顶是否命中 <Text code>Native Method</Text> I/O 等待模式（socketRead0、epollWait 等）→ 标记为「I/O 等待」</li>
       <li>检查线程名是否为 GC / JVM 系统线程 → 标记为「GC/系统」</li>
-      <li>检查是否存在异常模式（重复栈帧 → 死循环、超深栈 → 深度递归）</li>
-      <li>检查多线程是否共享相同栈帧（瓶颈点）</li>
-      <li>剩余线程标记为疑似 CPU 消耗线程</li>
+      <li>剩余线程标记为「CPU 消耗」（疑似在消耗 CPU）</li>
     </ol>
+
+    <p style={{ margin: '12px 0 8px', fontWeight: 600 }}>分类说明：</p>
+    <div style={{ background: '#fff2f0', borderRadius: 6, padding: '8px 12px', marginBottom: 8 }}>
+      <div style={{ marginBottom: 6 }}>
+        <Tag color="red" style={{ marginRight: 4 }}>CPU 消耗</Tag>
+        <span style={{ color: '#666' }}>RUNNABLE 且非 Native I/O 等待，疑似在消耗 CPU</span>
+      </div>
+      <ul style={{ margin: 0, paddingLeft: 18, color: '#666', lineHeight: 1.8 }}>
+        <li>可能是业务计算线程、死循环、或瓶颈点</li>
+        <li>需结合 top -H 或 async-profiler 确认实际 CPU 占用</li>
+      </ul>
+    </div>
+
+    <div style={{ background: '#fafafa', borderRadius: 6, padding: '8px 12px', marginBottom: 8 }}>
+      <div style={{ marginBottom: 6 }}>
+        <Tag color="default" style={{ marginRight: 4 }}>I/O 等待</Tag>
+        <span style={{ color: '#666' }}>RUNNABLE 但栈顶为 Native I/O 等待方法，实际不消耗 CPU</span>
+      </div>
+    </div>
+
+    <div style={{ background: '#e6fffb', borderRadius: 6, padding: '8px 12px', marginBottom: 8 }}>
+      <div style={{ marginBottom: 6 }}>
+        <Tag color="cyan" style={{ marginRight: 4 }}>GC/系统</Tag>
+        <span style={{ color: '#666' }}>RUNNABLE 但为 GC 或 JVM 系统线程，非业务 CPU 消耗</span>
+      </div>
+    </div>
+
     <p style={{ margin: '10px 0 4px', fontWeight: 600 }}>参考来源：</p>
     <ul style={{ margin: 0, paddingLeft: 18, color: '#666' }}>
       <li>fastthread: "Really Running" — blog.fastthread.io/really-running</li>
@@ -523,6 +580,9 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
   cpuTopFileList,
   setCpuTopFileList,
 }) => {
+  // ========== 状态管理 ==========
+  const [selectedThread, setSelectedThread] = useState<CpuThreadResult | null>(null);
+
   // ========== 核心评估逻辑 ==========
   const evalResults = useMemo((): CpuThreadResult[] => {
     const runnable = threads.filter((t) => t.state === 'RUNNABLE');
@@ -540,7 +600,7 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
 
     return runnable.map((t) => {
       const reasons: string[] = [];
-      let level: ConfidenceLevel = 'medium';
+      let category: ThreadCategory = 'cpu_consuming';
       const stack = t.stackTrace || [];
       const topFrame = stack[0] || '无栈帧';
       const stackDepth = stack.length;
@@ -550,43 +610,41 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
         IO_WAIT_NATIVE_PATTERNS.some((pat) => pat.test(frame)),
       );
       if (isIoWait) {
-        level = 'io_wait';
+        category = 'io_wait';
         const matchedFrame = stack.find((f) =>
           IO_WAIT_NATIVE_PATTERNS.some((pat) => pat.test(f)),
         );
         reasons.push(`栈顶含 Native I/O 等待方法：${matchedFrame?.substring(0, 60)}`);
-        return { thread: t, level, reasons, stackDepth, topFrame };
+        return { thread: t, category, reasons, stackDepth, topFrame };
       }
 
       // --- 检查 GC / 系统线程 ---
       const isGcThread = GC_NATIVE_PATTERNS.some((pat) => pat.test(t.name));
       if (isGcThread) {
-        level = 'gc';
+        category = 'gc';
         reasons.push('为 GC 或 JVM 系统线程');
-        return { thread: t, level, reasons, stackDepth, topFrame };
+        return { thread: t, category, reasons, stackDepth, topFrame };
       }
 
-      // --- 检查重复栈帧（死循环 / 无限递归） ---
+      // --- 检查异常模式（死循环、超深栈、共享瓶颈） ---
+      // 这些是额外的诊断信息，但不改变分类（仍然是 cpu_consuming）
       if (stack.length > 3) {
         const frameSet = new Set(stack);
         if (frameSet.size < stack.length * 0.5) {
-          level = 'high';
           reasons.push(`检测到重复栈帧（${stack.length} 帧中仅 ${frameSet.size} 个唯一帧），疑似死循环或无限递归`);
         }
       }
 
       // --- 检查超深栈 ---
       if (stackDepth > 150) {
-        if (level !== 'high') level = 'medium';
-        reasons.push(`调用栈异常深（${stackDepth} 帧），疑似深度递归`);
+        reasons.push(`调用栈异常深（${stackDepth} 帧），疑似深度递归或复杂调用`);
       }
 
       // --- 检查共享栈帧（瓶颈检测） ---
       if (stack.length > 0) {
         const sameStack = stackSigMap.get(stack[0]);
-        if (sameStack && sameStack.length > 1 && sameStack.length >= runnable.length * 0.1) {
-          if (level !== 'high') level = 'medium';
-          reasons.push(`与 ${sameStack.length} 个线程共享相同栈顶（瓶颈点）`);
+        if (sameStack && sameStack.length > 1) {
+          reasons.push(`与 ${sameStack.length} 个线程共享相同栈顶（疑似瓶颈点）`);
         }
       }
 
@@ -595,37 +653,36 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
         reasons.push('RUNNABLE 且栈顶无 Native I/O 等待，推测为业务计算线程');
       }
 
-      return { thread: t, level, reasons, stackDepth, topFrame };
+      return { thread: t, category, reasons, stackDepth, topFrame };
     });
   }, [threads]);
 
   // ========== 分组统计 ==========
   const stats = useMemo(() => {
     const total = evalResults.length;
-    const counts: Record<ConfidenceLevel, number> = {
-      high: 0, medium: 0, low: 0, io_wait: 0, gc: 0,
+    const counts: Record<ThreadCategory, number> = {
+      cpu_consuming: 0, io_wait: 0, gc: 0,
     };
-    evalResults.forEach((r) => counts[r.level]++);
+    evalResults.forEach((r) => counts[r.category]++);
     return { total, counts };
   }, [evalResults]);
 
   // ========== 表格列 ==========
   const columns: ColumnsType<CpuThreadResult> = [
     {
-      title: '推测',
-      dataIndex: 'level',
-      key: 'level',
+      title: '分类',
+      dataIndex: 'category',
+      key: 'category',
       width: 120,
       filters: [
-        { text: '高概率', value: 'high' },
-        { text: '中等概率', value: 'medium' },
-        { text: '低概率', value: 'low' },
+        { text: 'CPU 消耗', value: 'cpu_consuming' },
         { text: 'I/O 等待', value: 'io_wait' },
         { text: 'GC/系统', value: 'gc' },
       ],
-      onFilter: (value, record) => record.level === value,
-      render: (level: ConfidenceLevel) => {
-        const cfg = LEVEL_CONFIG[level];
+      defaultFilteredValue: ['cpu_consuming'],
+      onFilter: (value, record) => record.category === value,
+      render: (category: ThreadCategory) => {
+        const cfg = CATEGORY_CONFIG[category];
         return (
           <Tag color={cfg.tagColor} icon={cfg.icon}>
             {cfg.label}
@@ -645,8 +702,10 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
             style={{
               fontFamily: 'Menlo, Monaco, Consolas, monospace',
               fontSize: 12,
-              color: LEVEL_CONFIG[record.level].color,
+              color: CATEGORY_CONFIG[record.category].color,
+              cursor: 'pointer',
             }}
+            onClick={() => setSelectedThread(record)}
           >
             {name}
           </span>
@@ -730,7 +789,7 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
     );
   }
 
-  const cpuConsuming = stats.counts.high + stats.counts.medium + stats.counts.low;
+  const cpuConsuming = stats.counts.cpu_consuming;
 
   return (
     <div>
@@ -771,13 +830,9 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
 
         {cpuConsuming > 0 && (
           <Alert
-            type={stats.counts.high > 0 ? 'error' : 'warning'}
+            type="warning"
             showIcon
-            message={
-              stats.counts.high > 0
-                ? `发现 ${stats.counts.high} 个高概率 CPU 消耗线程，请重点关注！`
-                : `发现 ${cpuConsuming} 个疑似 CPU 消耗线程（${stats.counts.high} 高概率 / ${stats.counts.medium} 中等概率 / ${stats.counts.low} 低概率）`
-            }
+            message={`发现 ${cpuConsuming} 个疑似 CPU 消耗线程`}
             style={{ marginTop: 12, borderRadius: 8 }}
           />
         )}
@@ -804,8 +859,8 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
           }}
           scroll={{ x: 900 }}
           rowClassName={(record) => {
-            if (record.level === 'high') return 'cpu-row-high';
-            if (record.level === 'io_wait' || record.level === 'gc') return 'cpu-row-muted';
+            if (record.category === 'cpu_consuming') return 'cpu-row-high';
+            if (record.category === 'io_wait' || record.category === 'gc') return 'cpu-row-muted';
             return '';
           }}
         />
@@ -836,6 +891,50 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
         topFileList={cpuTopFileList}
         setTopFileList={setCpuTopFileList}
       />
+
+      {/* 线程详情弹窗 */}
+      <Modal
+        title={selectedThread ? `线程详情 - ${selectedThread.thread.name}` : '线程详情'}
+        open={!!selectedThread}
+        onCancel={() => setSelectedThread(null)}
+        footer={null}
+        width={800}
+      >
+        {selectedThread && (
+          <div>
+            <p><strong>线程名：</strong>{selectedThread.thread.name}</p>
+            <p><strong>状态：</strong>{selectedThread.thread.state}</p>
+            <p><strong>分类：</strong>
+              <Tag color={CATEGORY_CONFIG[selectedThread.category].tagColor} icon={CATEGORY_CONFIG[selectedThread.category].icon}>
+                {CATEGORY_CONFIG[selectedThread.category].label}
+              </Tag>
+            </p>
+            <p><strong>评估理由：</strong></p>
+            <ul style={{ color: '#666', lineHeight: 1.8 }}>
+              {selectedThread.reasons.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+            <p><strong>栈跟踪：</strong></p>
+            <pre style={{ background: '#1e1e1e', color: '#d4d4d4', padding: 16, borderRadius: 8, fontSize: 12, lineHeight: 1.8, maxHeight: 400, overflow: 'auto', fontFamily: "'Fira Code', 'Consolas', 'Courier New', monospace" }}>
+              {buildRawStackLines(selectedThread.thread).map((line, i) => {
+                const isAtLine = line.startsWith('at ');
+                const isWaitingLine = line.startsWith('- waiting to lock') || line.startsWith('- parking to wait');
+                const isLockedLine = line.startsWith('- locked');
+                let color = '#d4d4d4';
+                if (isAtLine) color = '#dcdcaa';
+                else if (isLockedLine) color = '#569cd6';
+                else if (isWaitingLine) color = '#ce9178';
+                return (
+                  <div key={i} style={{ color }}>
+                    {line}
+                  </div>
+                );
+              })}
+            </pre>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
