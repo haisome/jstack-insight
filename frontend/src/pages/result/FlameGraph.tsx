@@ -9,6 +9,8 @@ const { Title } = Typography;
 
 interface FlameGraphProps {
   flameGraph: FlameGraphVO;
+  /** 当前 tab 是否可见，保留以备将来使用 */
+  visible?: boolean;
 }
 
 /** 着色方案：按 colorCategory 映射具体颜色 */

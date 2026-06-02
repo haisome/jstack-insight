@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Card, Typography, Alert, Empty, Tooltip, Badge, Space, Tag, Popover, Button, message } from 'antd';
-import { QuestionCircleOutlined, PlusOutlined, MinusOutlined, ExpandOutlined } from '@ant-design/icons';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { Card, Typography, Alert, Empty, Tooltip, Badge, Space, Tag, Popover, Button, Input, InputNumber, message } from 'antd';
+import { QuestionCircleOutlined, PlusOutlined, MinusOutlined, ExpandOutlined, FilterOutlined } from '@ant-design/icons';
 import type { LockGraphVO, GraphNode, GraphEdge, ThreadSummary } from '../../types';
 
 const { Title, Text } = Typography;
@@ -8,6 +8,8 @@ const { Title, Text } = Typography;
 interface LockGraphProps {
   lockGraph: LockGraphVO;
   threads: ThreadSummary[];
+  /** 当前 tab 是否可见，隐藏时暂停 D3 仿真以节省性能 */
+  visible?: boolean;
 }
 
 /**
@@ -42,7 +44,7 @@ const LOCK_HELP_CONTENT = (
   </div>
 );
 
-const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads }) => {
+const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = true }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const simulationRef = useRef<d3.Simulation<SimNode, SimEdge> | null>(null);
@@ -61,6 +63,87 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads }) => {
   const [containerWidth, setContainerWidth] = useState(0);
   const threadsRef = useRef<ThreadSummary[]>(threads);
   threadsRef.current = threads;
+
+  const { nodes, edges, hasDeadlock, deadlockChains } = lockGraph;
+
+  // ========== 过滤：包名/锁名 + 自定义延迟 ==========
+  const [filterText, setFilterText] = useState('');
+  const [debounceDelay, setDebounceDelay] = useState(300);
+  const [activeFilter, setActiveFilter] = useState('');
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** 过滤输入变更 — 根据用户设定的延迟进行 debounce */
+  const handleFilterChange = useCallback(
+    (value: string) => {
+      setFilterText(value);
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      const trimmed = value.trim();
+      if (!trimmed) {
+        setActiveFilter('');
+        return;
+      }
+      debounceTimerRef.current = setTimeout(() => {
+        setActiveFilter(trimmed);
+      }, debounceDelay);
+    },
+    [debounceDelay]
+  );
+
+  /** 立即应用过滤（失去焦点或回车时） */
+  const handleFilterConfirm = useCallback(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    const trimmed = filterText.trim();
+    setActiveFilter(trimmed);
+  }, [filterText]);
+
+  /** 根据 activeFilter 计算过滤后的节点和边 */
+  const { displayNodes, displayEdges } = useMemo(() => {
+    if (!activeFilter) return { displayNodes: nodes, displayEdges: edges };
+
+    const lowerFilter = activeFilter.toLowerCase();
+    const threadsMap = new Map<string, ThreadSummary>();
+    threads.forEach((t) => threadsMap.set(t.name, t));
+
+    // 1) 匹配的线程节点 — 检查栈帧中是否包含过滤词
+    const matchedThreadIds = new Set<string>();
+    nodes.forEach((n) => {
+      if (n.type !== 'THREAD') return;
+      const thread = threadsMap.get(n.label);
+      if (!thread) return;
+      const stackMatch = thread.stackTrace.some((frame) =>
+        frame.toLowerCase().includes(lowerFilter)
+      );
+      const nameMatch = thread.name.toLowerCase().includes(lowerFilter);
+      if (stackMatch || nameMatch) matchedThreadIds.add(n.id);
+    });
+
+    // 2) 匹配的锁节点 — 锁类名包含过滤词
+    const matchedLockIds = new Set<string>();
+    nodes.forEach((n) => {
+      if (n.type === 'LOCK' && n.label.toLowerCase().includes(lowerFilter)) {
+        matchedLockIds.add(n.id);
+      }
+    });
+
+    // 3) 把匹配线程关联的锁也纳入可见集（保持图的完整性）
+    edges.forEach((e) => {
+      const srcId = e.source;
+      const tgtId = e.target;
+      const srcIsLock = nodes.find((n) => n.id === srcId)?.type === 'LOCK';
+      const tgtIsLock = nodes.find((n) => n.id === tgtId)?.type === 'LOCK';
+      if (matchedThreadIds.has(srcId) && tgtIsLock) matchedLockIds.add(tgtId);
+      if (matchedThreadIds.has(tgtId) && srcIsLock) matchedLockIds.add(srcId);
+    });
+
+    const visibleSet = new Set([...matchedThreadIds, ...matchedLockIds]);
+
+    const filteredNodes = nodes.filter((n) => visibleSet.has(n.id));
+    const filteredEdges = edges.filter(
+      (e) => visibleSet.has(e.source) && visibleSet.has(e.target)
+    );
+
+    return { displayNodes: filteredNodes, displayEdges: filteredEdges };
+  }, [nodes, edges, threads, activeFilter]);
 
   // ========== 栈跟踪还原辅助（复用 CpuAnalysis / Threads 中的实现） ==========
   function buildRawStackLines(thread: ThreadSummary): string[] {
@@ -96,8 +179,6 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads }) => {
 
     return lines;
   }
-
-  const { nodes, edges, hasDeadlock, deadlockChains } = lockGraph;
 
   // ResizeObserver：跟踪容器宽度，宽度为 0 时不初始化 D3（容器不可见）
   useEffect(() => {
@@ -149,7 +230,8 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads }) => {
   }, []);
 
   useEffect(() => {
-    if (!svgRef.current || nodes.length === 0 || containerWidth === 0) return;
+    if (!visible) return;
+    if (!svgRef.current || displayNodes.length === 0 || containerWidth === 0) return;
 
     // 动态导入 D3（避免 SSR 问题）
     import('d3').then((d3) => {
@@ -158,7 +240,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads }) => {
       if (!container) return;
 
       const width = container.clientWidth;
-      const height = Math.max(500, Math.min(nodes.length * 20, 700));
+      const height = Math.max(500, Math.min(displayNodes.length * 20, 700));
 
       svg.attr('width', width).attr('height', height);
       svg.selectAll('*').remove();
@@ -182,12 +264,12 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads }) => {
       });
 
       // 构建仿真数据
-      const simNodes: SimNode[] = nodes.map((n) => ({
+      const simNodes: SimNode[] = displayNodes.map((n) => ({
         ...n,
         x: width / 2 + (Math.random() - 0.5) * 200,
         y: height / 2 + (Math.random() - 0.5) * 200,
       }));
-      const simEdges: SimEdge[] = edges.map((e, i) => ({
+      const simEdges: SimEdge[] = displayEdges.map((e, i) => ({
         id: `edge-${i}`,
         source: e.source,
         target: e.target,
@@ -435,9 +517,10 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads }) => {
       // 清理
       return () => {
         simulation.stop();
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       };
     });
-  }, [nodes, edges, containerWidth]);
+  }, [displayNodes, displayEdges, containerWidth, visible]);
   if (nodes.length === 0) {
     return (
       <Card title={<Title level={5} style={{ margin: 0 }}>锁竞争图</Title>}>
@@ -452,9 +535,14 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads }) => {
         <Space>
           <Title level={5} style={{ margin: 0 }}>锁竞争图</Title>
           <Badge
-            count={`${nodes.length} 节点`}
-            style={{ backgroundColor: '#1677ff' }}
+            count={activeFilter ? `${displayNodes.length}/${nodes.length} 节点` : `${nodes.length} 节点`}
+            style={{ backgroundColor: activeFilter ? '#722ed1' : '#1677ff' }}
           />
+          {activeFilter && (
+            <Tag color="purple" style={{ fontSize: 11 }}>
+              <FilterOutlined /> &quot;{activeFilter}&quot;
+            </Tag>
+          )}
         </Space>
       }
       extra={
@@ -466,6 +554,51 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads }) => {
         </Space>
       }
     >
+      {/* 过滤栏 */}
+      <div
+        style={{
+          marginBottom: 12,
+          padding: '8px 12px',
+          background: '#fafafa',
+          borderRadius: 8,
+          border: '1px solid #f0f0f0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        <FilterOutlined style={{ color: '#722ed1', fontSize: 14 }} />
+        <Input
+          placeholder="输入包名或锁类名进行筛选，如 com.zeng 或 HashMap"
+          value={filterText}
+          onChange={(e) => handleFilterChange(e.target.value)}
+          onPressEnter={handleFilterConfirm}
+          onBlur={handleFilterConfirm}
+          allowClear
+          style={{ flex: 1, minWidth: 260 }}
+        />
+        <span style={{ fontSize: 12, color: '#999', whiteSpace: 'nowrap' }}>延迟</span>
+        <InputNumber
+          min={0}
+          max={5000}
+          step={100}
+          value={debounceDelay}
+          onChange={(v) => setDebounceDelay(v ?? 300)}
+          addonAfter="ms"
+          size="middle"
+          style={{ width: 120 }}
+        />
+      </div>
+
+      {/* 过滤后无结果 */}
+      {activeFilter && displayNodes.length === 0 && (
+        <Empty
+          description={`未找到包含 "${activeFilter}" 的线程或锁`}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
       {/* 死锁警告 */}
       {hasDeadlock && (
         <Alert

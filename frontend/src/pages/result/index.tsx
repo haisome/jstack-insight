@@ -58,51 +58,11 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
   const [cpuTopFileList, setCpuTopFileList] = useState<UploadFile[]>([]);
   const { threadState, lockGraph, flameGraph, deadlockChain } = result;
 
-  // 根据 activeTab 渲染对应面板（只渲染当前面板，切换时重新挂载）
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'overview':
-        return <Overview threadState={threadState} />;
-      case 'thread-list':
-        return <Threads threads={threadState.threads} view="list" />;
-      case 'thread-groups':
-        return <Threads threads={threadState.threads} view="groups" />;
-      case 'thread-group':
-        return <ThreadGroups threadState={threadState} />;
-      case 'lock-graph':
-        return <LockGraph lockGraph={lockGraph} threads={threadState.threads} />;
-      case 'lock-deadlock':
-        return <DeadlockDetail deadlockChain={deadlockChain} threadState={threadState} lockGraph={lockGraph} />;
-      case 'flame-graph':
-        return <FlameGraph flameGraph={flameGraph} />;
-      case 'cpu-inference':
-        return (
-          <CpuAnalysis
-            threads={threadState.threads}
-            jstackRawFile={jstackRawFile}
-            cpuTopResult={cpuTopResult}
-            setCpuTopResult={setCpuTopResult}
-            cpuTopFileList={cpuTopFileList}
-            setCpuTopFileList={setCpuTopFileList}
-            view="inference"
-          />
-        );
-      case 'cpu-precise':
-        return (
-          <CpuAnalysis
-            threads={threadState.threads}
-            jstackRawFile={jstackRawFile}
-            cpuTopResult={cpuTopResult}
-            setCpuTopResult={setCpuTopResult}
-            cpuTopFileList={cpuTopFileList}
-            setCpuTopFileList={setCpuTopFileList}
-            view="precise"
-          />
-        );
-      default:
-        return <Overview threadState={threadState} />;
-    }
-  };
+  // 全部面板同时挂载，只用 CSS display 切换可见性，避免状态丢失
+  // D3 组件通过 visible prop 暂停后台仿真，防止性能浪费
+  const panelStyle = (key: string): React.CSSProperties => ({
+    display: activeTab === key ? 'block' : 'none',
+  });
 
   // 菜单项（带角标 + 子菜单）
   const menuItems = [
@@ -379,7 +339,7 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
           </Space>
         </div>
 
-        {/* 主内容 */}
+        {/* 主内容 — 全部面板保持挂载，CSS display 控制可见性，状态不丢失 */}
         <Content
           style={{
             flex: 1,
@@ -389,7 +349,49 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
             minHeight: 'calc(100vh - 48px)',
           }}
         >
-          {renderTabContent()}
+          <div style={panelStyle('overview')}>
+            <Overview threadState={threadState} />
+          </div>
+          <div style={panelStyle('thread-list')}>
+            <Threads threads={threadState.threads} view="list" />
+          </div>
+          <div style={panelStyle('thread-groups')}>
+            <Threads threads={threadState.threads} view="groups" />
+          </div>
+          <div style={panelStyle('thread-group')}>
+            <ThreadGroups threadState={threadState} />
+          </div>
+          <div style={panelStyle('lock-graph')}>
+            <LockGraph lockGraph={lockGraph} threads={threadState.threads} visible={activeTab === 'lock-graph'} />
+          </div>
+          <div style={panelStyle('lock-deadlock')}>
+            <DeadlockDetail deadlockChain={deadlockChain} threadState={threadState} lockGraph={lockGraph} />
+          </div>
+          <div style={panelStyle('flame-graph')}>
+            <FlameGraph flameGraph={flameGraph} visible={activeTab === 'flame-graph'} />
+          </div>
+          <div style={panelStyle('cpu-inference')}>
+            <CpuAnalysis
+              threads={threadState.threads}
+              jstackRawFile={jstackRawFile}
+              cpuTopResult={cpuTopResult}
+              setCpuTopResult={setCpuTopResult}
+              cpuTopFileList={cpuTopFileList}
+              setCpuTopFileList={setCpuTopFileList}
+              view="inference"
+            />
+          </div>
+          <div style={panelStyle('cpu-precise')}>
+            <CpuAnalysis
+              threads={threadState.threads}
+              jstackRawFile={jstackRawFile}
+              cpuTopResult={cpuTopResult}
+              setCpuTopResult={setCpuTopResult}
+              cpuTopFileList={cpuTopFileList}
+              setCpuTopFileList={setCpuTopFileList}
+              view="precise"
+            />
+          </div>
         </Content>
       </Layout>
     </Layout>
