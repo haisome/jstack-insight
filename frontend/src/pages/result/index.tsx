@@ -15,6 +15,7 @@ import {
   BulbOutlined,
   AimOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import Overview from './Overview';
 import Threads from './Threads';
 import LockGraph from './LockGraph';
@@ -33,23 +34,8 @@ interface ResultPageProps {
   onBack: () => void;
 }
 
-/** 菜单 key → 面包屑名称 */
-const MENU_BREADCRUMB: Record<string, string> = {
-  overview: '概览',
-  'thread-analysis': '线程分析',
-  'thread-list': '线程列表',
-  'thread-groups': '相同堆栈分析',
-  'thread-group': '线程组',
-  'lock-analysis': '锁分析',
-  'lock-graph': '锁竞争图',
-  'lock-deadlock': '死锁检测',
-  'flame-graph': '火焰图',
-  'cpu-analysis': 'CPU 分析',
-  'cpu-inference': 'CPU 线程推测',
-  'cpu-precise': '精准 CPU 采集',
-};
-
 const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }) => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('overview');
   const [collapsed, setCollapsed] = useState(false);
   // CPU 分析状态：提升到 ResultPage 层级，切换 tab 时不丢失
@@ -63,12 +49,12 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
     display: activeTab === key ? 'block' : 'none',
   });
 
-  // 菜单项（带角标 + 子菜单）
+  // 菜单项（带角标 + 子菜单）- 使用 t() 函数
   const menuItems = [
     {
       key: 'overview',
       icon: <HomeOutlined />,
-      label: '概览',
+      label: t('result.menuOverview'),
     },
     {
       key: 'thread-analysis',
@@ -98,22 +84,22 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
           )}
         </span>
       ),
-      label: '线程分析',
+      label: t('result.menuThreadAnalysis'),
       children: [
         {
           key: 'thread-list',
           icon: <UnorderedListOutlined />,
-          label: '线程列表',
+          label: t('result.menuThreadList'),
         },
         {
           key: 'thread-group',
           icon: <ClusterOutlined />,
-          label: '线程组',
+          label: t('result.menuThreadGroup'),
         },
         {
           key: 'thread-groups',
           icon: <CopyOutlined />,
-          label: '相同堆栈分析',
+          label: t('result.menuSameStackAnalysis'),
         },
       ],
     },
@@ -145,17 +131,17 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
           )}
         </span>
       ),
-      label: '锁分析',
+      label: t('result.menuLockAnalysis'),
       children: [
         {
           key: 'lock-graph',
           icon: <ApiOutlined />,
-          label: '锁竞争图',
+          label: t('result.menuLockGraph'),
         },
         {
           key: 'lock-deadlock',
           icon: <LockOutlined />,
-          label: '死锁检测',
+          label: t('result.menuDeadlockDetection'),
         },
       ],
     },
@@ -163,23 +149,23 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
     {
       key: 'flame-graph',
       icon: <FireOutlined />,
-      label: '火焰图',
+      label: t('result.menuFlameGraph'),
     },
     // CPU 分析 - 父节点
     {
       key: 'cpu-analysis',
       icon: <ThunderboltOutlined />,
-      label: 'CPU 分析',
+      label: t('result.menuCpuAnalysis'),
       children: [
         {
           key: 'cpu-inference',
           icon: <BulbOutlined />,
-          label: 'CPU 线程推测',
+          label: t('result.menuCpuInference'),
         },
         {
           key: 'cpu-precise',
           icon: <AimOutlined />,
-          label: '精准 CPU 采集',
+          label: t('result.menuCpuPrecise'),
         },
       ],
     },
@@ -207,10 +193,30 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
       setActiveTab(key);
     }
   };
+
   // 面包屑：找到当前 activeTab 对应的面包屑路径
+  // 菜单 key → 面包屑名称（使用 t() 函数）
+  const getMenuBreadcrumbName = (key: string): string => {
+    const breadcrumbMap: Record<string, string> = {
+      overview: t('result.menuOverview'),
+      'thread-analysis': t('result.menuThreadAnalysis'),
+      'thread-list': t('result.menuThreadList'),
+      'thread-groups': t('result.menuSameStackAnalysis'),
+      'thread-group': t('result.menuThreadGroup'),
+      'lock-analysis': t('result.menuLockAnalysis'),
+      'lock-graph': t('result.menuLockGraph'),
+      'lock-deadlock': t('result.menuDeadlockDetection'),
+      'flame-graph': t('result.menuFlameGraph'),
+      'cpu-analysis': t('result.menuCpuAnalysis'),
+      'cpu-inference': t('result.menuCpuInference'),
+      'cpu-precise': t('result.menuCpuPrecise'),
+    };
+    return breadcrumbMap[key] || key;
+  };
+
   const getBreadcrumbItems = () => {
     const items: { title: React.ReactNode }[] = [
-      { title: <span style={{ color: '#999' }}>分析结果</span> },
+      { title: <span style={{ color: '#999' }}>{t('result.breadcrumbAnalysisResult')}</span> },
     ];
     // 找到当前 tab 在菜单树中的路径
     const findPath = (items: typeof menuItems, targetKey: string, path: string[] = []): string[] | null => {
@@ -226,7 +232,7 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
     const path = findPath(menuItems, activeTab);
     if (path) {
       path.forEach(key => {
-        items.push({ title: <span style={{ color: key === activeTab ? '#1a1a1a' : '#999' }}>{MENU_BREADCRUMB[key] || key}</span> });
+        items.push({ title: <span style={{ color: key === activeTab ? '#1a1a1a' : '#999' }}>{getMenuBreadcrumbName(key)}</span> });
       });
     }
     return items;
@@ -308,7 +314,7 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
               size="small"
               style={{ color: '#666', fontSize: 13 }}
             >
-              重新上传
+              {t('result.backToUpload')}
             </Button>
             <div
               style={{
@@ -327,12 +333,12 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
           <Space size={8}>
             {deadlockChain.detected && (
               <Tag color="red" style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, fontWeight: 500 }}>
-                <BugOutlined /> {deadlockChain.chains.length} 组死锁
+                <BugOutlined /> {t('result.deadlockCount', { count: deadlockChain.chains.length })}
               </Tag>
             )}
             {lockGraph.hasDeadlock && (
               <Tag color="orange" style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, fontWeight: 500 }}>
-                存在锁竞争
+                {t('result.hasLockCompetition')}
               </Tag>
             )}
           </Space>

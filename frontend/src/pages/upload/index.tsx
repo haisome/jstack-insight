@@ -4,7 +4,6 @@ import {
   Button,
   Typography,
   Space,
-  Alert,
   Spin,
   App,
   Popover,
@@ -16,6 +15,7 @@ import {
   QuestionCircleOutlined,
 } from '@ant-design/icons';
 import type { UploadFile, UploadProps } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { uploadAndAnalyze } from '../../services/api';
 import type { AnalysisResultVO } from '../../types';
 
@@ -26,58 +26,35 @@ const { Title, Paragraph, Text } = Typography;
 const CMD_COMBINED = 'top -H -p <pid> -n 1 -b > top_threads.txt && jstack -l <pid> > jstack.txt';
 const CMD_JSTACK_ONLY = 'jstack -l <pid> > jstack.txt';
 
-/** 命令帮助 Popover 内容 */
-const COMMAND_HELP = (
-  <div style={{ maxWidth: 520, fontSize: 13 }}>
-    <p style={{ margin: '0 0 6px', fontWeight: 600 }}>如何获取分析文件？</p>
-    <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 2 }}>
-      <li>
-        找到 Java 进程 PID：<code>jps -l</code> 或 <code>ps -ef | grep java</code>
-      </li>
-      <li>
-        生成 jstack 文件：<br />
-        <code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: 4 }}>{CMD_JSTACK_ONLY}</code>
-      </li>
-      <li>
-        （可选）同时采集 top 线程 CPU 数据：<br />
-        <code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{CMD_COMBINED}</code>
-      </li>
-      <li>上传生成的 .txt 文件到本工具进行分析</li>
-    </ol>
-    <p style={{ margin: '8px 0 0', color: '#999', fontSize: 12 }}>
-      提示：top 文件可在「CPU 分析」页面上传，用于精确关联线程 CPU 占用率。
-    </p>
-  </div>
-);
-
 interface UploadPageProps {
   onResult: (result: AnalysisResultVO, rawFile: File | null) => void;
 }
 
 const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
+  const { t } = useTranslation();
   const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
 
   const handleAnalyze = async () => {
     if (fileList.length === 0) {
-      message.warning('请先上传 jstack 文件');
+      message.warning(t('upload.warningNoFile'));
       return;
     }
 
     const rawFile = fileList[0].originFileObj;
     if (!rawFile) {
-      message.error('文件对象异常，请重新选择文件');
+      message.error(t('upload.errorFileObject'));
       return;
     }
 
     setLoading(true);
     try {
       const result = await uploadAndAnalyze(rawFile);
-      message.success('分析完成！');
+      message.success(t('upload.successAnalyzed'));
       onResult(result, rawFile);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '分析失败，请重试';
+      const msg = err instanceof Error ? err.message : t('upload.errorAnalyzeFailed');
       message.error(msg);
     } finally {
       setLoading(false);
@@ -113,7 +90,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
       {/* 标题区 */}
       <Space direction="vertical" align="center" style={{ marginBottom: 48 }}>
         <Title level={1} style={{ margin: 0, color: '#1677ff' }}>
-          🔍 JStack Insight
+          🔍 {t('common.appName')}
         </Title>
         <Paragraph
           style={{
@@ -125,10 +102,10 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
             lineHeight: 1.6,
           }}
         >
-          一键上传 JStack 线程转储，快速定位死锁、锁竞争与性能瓶颈
+          {t('upload.subtitle')}
           <br />
           <Text type="secondary" style={{ fontSize: 13 }}>
-            支撑多种分析模式：线程组、锁竞争图、死锁检测、火焰图、CPU线程推测
+            {t('upload.features')}
           </Text>
         </Paragraph>
       </Space>
@@ -144,7 +121,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
           boxShadow: '0 8px 40px rgba(0,0,0,0.1)',
         }}
       >
-        <Spin spinning={loading} tip="分析中，请稍候...">
+        <Spin spinning={loading} tip={t('upload.analyzing')}>
           <Dragger {...draggerProps} style={{ borderRadius: 12 }}>
             <p className="ant-upload-drag-icon">
               <InboxOutlined style={{ color: '#1677ff', fontSize: 48 }} />
@@ -153,10 +130,10 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
               className="ant-upload-text"
               style={{ fontSize: 16, fontWeight: 500 }}
             >
-              点击或拖拽 jstack 文件到此处
+              {t('upload.draggerText')}
             </p>
             <p className="ant-upload-hint" style={{ color: '#999' }}>
-              仅支持 .txt 格式，文件大小 ≤ 50MB
+              {t('upload.draggerHint')}
             </p>
           </Dragger>
 
@@ -170,7 +147,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
             block
             style={{ marginTop: 24, height: 48, fontSize: 16, borderRadius: 8 }}
           >
-            开始分析
+            {t('upload.analyzeButton')}
           </Button>
         </Spin>
 
@@ -189,18 +166,44 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
           >
             <div style={{ fontFamily: "'Inter',sans-serif", color: '#999', marginBottom: 4 }}>
               <QuestionCircleOutlined style={{ marginRight: 4 }} />
-              采集命令（将 {'<pid>'} 替换为 Java 进程 PID）：
+              {t('upload.commandTitle')}
             </div>
             <div>
               <span style={{ color: '#dcdcaa' }}>{CMD_COMBINED}</span>
             </div>
           </div>
           <Space style={{ marginTop: 10, alignItems: 'center' }}>
-            <Popover content={COMMAND_HELP} title="命令帮助" placement="topRight" trigger="hover">
+            <Popover
+              content={
+                <div style={{ maxWidth: 520, fontSize: 13 }}>
+                  <p style={{ margin: '0 0 6px', fontWeight: 600 }}>{t('upload.howToGetFile')}</p>
+                  <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 2 }}>
+                    <li>
+                      {t('upload.step1')}<code>jps -l</code> 或 <code>ps -ef | grep java</code>
+                    </li>
+                    <li>
+                      {t('upload.step2')}<br />
+                      <code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: 4 }}>{CMD_JSTACK_ONLY}</code>
+                    </li>
+                    <li>
+                      {t('upload.step3')}<br />
+                      <code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{CMD_COMBINED}</code>
+                    </li>
+                    <li>{t('upload.step4')}</li>
+                  </ol>
+                  <p style={{ margin: '8px 0 0', color: '#999', fontSize: 12 }}>
+                    {t('upload.tip')}
+                  </p>
+                </div>
+              }
+              title={t('upload.commandHelp')}
+              placement="topRight"
+              trigger="hover"
+            >
               <QuestionCircleOutlined style={{ color: '#999', cursor: 'pointer', fontSize: 13 }} />
             </Popover>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              文件不会持久化存储
+              {t('upload.privacyNote')}
             </Text>
           </Space>
         </div>
@@ -210,7 +213,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
       <Space style={{ marginTop: 32, color: '#999' }}>
         <GithubOutlined />
         <Text type="secondary" style={{ fontSize: 12 }}>
-          JStack Insight · JVM Thread Dump Analyzer
+          {t('common.appName')} · {t('common.appDescription')}
         </Text>
       </Space>
     </div>
