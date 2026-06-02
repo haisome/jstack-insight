@@ -99,17 +99,18 @@ const Overview: React.FC<OverviewProps> = ({ threadState }) => {
       style: { fontSize: 11 },
     },
     tooltip: {
-      title: 'type',
-      showMarkers: false,
-      fields: ['value'],
-      formatter: (datum: any) => {
-        const info = STATE_DESCRIPTION_MAP[datum.type];
-        const pct = totalThreads > 0 ? ((datum.value / totalThreads) * 100).toFixed(1) : '0.0';
-        return {
-          name: `数量：${datum.value} 个（${pct}%）`,
-          value: info?.desc || '',
-        };
-      },
+      title: false,
+      items: [
+        (datum: any) => {
+          const info = STATE_DESCRIPTION_MAP[datum.type];
+          const pct = totalThreads > 0 ? ((datum.value / totalThreads) * 100).toFixed(1) : '0.0';
+          return {
+            name: `${datum.type}（${info?.label || ''}）`,
+            value: `${datum.value} 个（${pct}%）`,
+            color: datum.color,
+          };
+        },
+      ],
     },
   };
 

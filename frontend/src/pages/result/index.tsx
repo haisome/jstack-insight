@@ -6,15 +6,14 @@ import {
   UnorderedListOutlined,
   ApiOutlined,
   FireOutlined,
-  DashboardOutlined,
   ArrowLeftOutlined,
   BugOutlined,
-  FileSearchOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   ClusterOutlined,
   LockOutlined,
   ThunderboltOutlined,
+  CopyOutlined,
+  BulbOutlined,
+  AimOutlined,
 } from '@ant-design/icons';
 import Overview from './Overview';
 import Threads from './Threads';
@@ -113,7 +112,7 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
         },
         {
           key: 'thread-groups',
-          icon: <ClusterOutlined />,
+          icon: <CopyOutlined />,
           label: '相同堆栈分析',
         },
       ],
@@ -174,12 +173,12 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
       children: [
         {
           key: 'cpu-inference',
-          icon: <ThunderboltOutlined />,
+          icon: <BulbOutlined />,
           label: 'CPU 线程推测',
         },
         {
           key: 'cpu-precise',
-          icon: <DashboardOutlined />,
+          icon: <AimOutlined />,
           label: '精准 CPU 采集',
         },
       ],
@@ -265,7 +264,7 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
             justifyContent: collapsed ? 'center' : 'flex-start',
           }}
         >
-          <FileSearchOutlined style={{ fontSize: 20, color: '#1677ff', flexShrink: 0 }} />
+          <img src="/logo.png" alt="JStack Insight" style={{ width: 28, height: 24.5, flexShrink: 0 }} />
           {!collapsed && (
             <Title level={4} style={{ margin: 0, fontSize: 16, color: '#1a1a1a' }}>
               JStack Insight

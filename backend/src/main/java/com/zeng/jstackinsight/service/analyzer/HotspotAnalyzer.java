@@ -19,7 +19,7 @@ import java.util.*;
  * <ul>
  *   <li>java.* / javax.* / sun.* → "jdk"（蓝色）</li>
  *   <li>org.springframework.* → "spring"（绿色）</li>
- *   <li>com.* / org.* (非spring) → "app"（橙色）</li>
+ *   <li>com.* / org.* (非spring) / net.* / cn.* → "app"（橙色）</li>
  *   <li>其他 → "other"（灰色）</li>
  * </ul>
  *
@@ -113,7 +113,8 @@ public class HotspotAnalyzer {
         if (frame.startsWith("org.springframework")) {
             return "spring";
         }
-        if (frame.startsWith("com.") || frame.startsWith("org.") || frame.startsWith("net.")) {
+        if (frame.startsWith("com.") || frame.startsWith("org.") || frame.startsWith("net.")
+                || frame.startsWith("cn.")) {
             return "app";
         }
         return "other";

@@ -112,9 +112,8 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
     >
       {/* 标题区 */}
       <Space direction="vertical" align="center" style={{ marginBottom: 48 }}>
-        <div style={{ fontSize: 48 }}>🔍</div>
         <Title level={1} style={{ margin: 0, color: '#1677ff' }}>
-          JStack Insight
+          🔍 JStack Insight
         </Title>
         <Paragraph
           style={{
@@ -126,10 +125,10 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
             lineHeight: 1.6,
           }}
         >
-          一键上传 JVM 线程转储，快速定位死锁、锁竞争与性能瓶颈
+          一键上传 JStack 线程转储，快速定位死锁、锁竞争与性能瓶颈
           <br />
           <Text type="secondary" style={{ fontSize: 13 }}>
-            支持 HotSpot VM · 兼容 jstack / kill -3 输出格式
+            支撑多种分析模式：线程组、锁竞争图、死锁检测、火焰图、CPU线程推测
           </Text>
         </Paragraph>
       </Space>
