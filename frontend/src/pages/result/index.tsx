@@ -20,6 +20,7 @@ import Overview from './Overview';
 import Threads from './Threads';
 import LockGraph from './LockGraph';
 import DeadlockDetail from './DeadlockDetail';
+import ThreadGroups from './ThreadGroups';
 import FlameGraph from './FlameGraph';
 import CpuAnalysis from './CpuAnalysis';
 import type { AnalysisResultVO, TopCpuVO } from '../../types';
@@ -39,6 +40,7 @@ const MENU_BREADCRUMB: Record<string, string> = {
   'thread-analysis': '线程分析',
   'thread-list': '线程列表',
   'thread-groups': '相同堆栈分析',
+  'thread-group': '线程组',
   'lock-analysis': '锁分析',
   'lock-graph': '锁竞争图',
   'lock-deadlock': '死锁检测',
@@ -65,6 +67,8 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
         return <Threads threads={threadState.threads} view="list" />;
       case 'thread-groups':
         return <Threads threads={threadState.threads} view="groups" />;
+      case 'thread-group':
+        return <ThreadGroups threadState={threadState} />;
       case 'lock-graph':
         return <LockGraph lockGraph={lockGraph} threads={threadState.threads} />;
       case 'lock-deadlock':
@@ -141,6 +145,11 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
           key: 'thread-list',
           icon: <UnorderedListOutlined />,
           label: '线程列表',
+        },
+        {
+          key: 'thread-group',
+          icon: <ClusterOutlined />,
+          label: '线程组',
         },
         {
           key: 'thread-groups',
