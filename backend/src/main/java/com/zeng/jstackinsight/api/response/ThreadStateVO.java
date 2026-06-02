@@ -57,6 +57,8 @@ public class ThreadStateVO {
         private boolean inDeadlock;
         /** 该线程当前等待的锁地址（如有） */
         private String waitingOnLock;
+        /** 等待类型：MONITOR / PARKING / OBJECT_WAIT */
+        private String waitingType;
         /** 该线程当前等待的锁类型全限定名（如有） */
         private String waitingOnLockClass;
         /** 该线程持有的锁地址列表 */

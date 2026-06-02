@@ -20,6 +20,7 @@ export interface ThreadSummary {
   state: string;
   inDeadlock: boolean;
   waitingOnLock?: string;
+  waitingType?: string;
   waitingOnLockClass?: string;
   lockedMonitors: string[];
   lockedMonitorClasses?: string[];

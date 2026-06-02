@@ -19,6 +19,7 @@ import {
 import Overview from './Overview';
 import Threads from './Threads';
 import LockGraph from './LockGraph';
+import DeadlockDetail from './DeadlockDetail';
 import FlameGraph from './FlameGraph';
 import CpuAnalysis from './CpuAnalysis';
 import type { AnalysisResultVO, TopCpuVO } from '../../types';
@@ -67,7 +68,7 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
       case 'lock-graph':
         return <LockGraph lockGraph={lockGraph} threads={threadState.threads} />;
       case 'lock-deadlock':
-        return <LockGraph lockGraph={lockGraph} threads={threadState.threads} />;
+        return <DeadlockDetail deadlockChain={deadlockChain} threadState={threadState} lockGraph={lockGraph} />;
       case 'flame-graph':
         return <FlameGraph flameGraph={flameGraph} />;
       case 'cpu-inference':

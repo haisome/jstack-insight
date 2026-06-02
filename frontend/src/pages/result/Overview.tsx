@@ -345,7 +345,7 @@ const Overview: React.FC<OverviewProps> = ({ threadState }) => {
           type="error"
           showIcon
           message={`检测到 ${deadlockCount} 个线程参与死锁！`}
-          description="请立即查看「锁竞争图」和「线程列表」中标记为红色的线程。"
+          description="请立即查看「线程列表」中标记为红色的线程，可使用「锁竞争图」和 「死锁检测」 查看锁详情。"
           style={{ marginBottom: 24, borderRadius: 8 }}
         />
       )}

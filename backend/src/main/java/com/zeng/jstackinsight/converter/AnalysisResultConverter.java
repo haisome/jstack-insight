@@ -71,6 +71,7 @@ public class AnalysisResultConverter {
                         .state(t.getState())
                         .inDeadlock(result.getDeadlockThreads().contains(t.getName()))
                         .waitingOnLock(t.getWaitingOnLock())
+                        .waitingType(t.getWaitingType())
                         .waitingOnLockClass(t.getWaitingOnLockClass())
                         .lockedMonitors(t.getLockedMonitors())
                         .lockedMonitorClasses(t.getLockedMonitorClasses())

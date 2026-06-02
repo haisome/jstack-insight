@@ -78,12 +78,36 @@ public class JStackLineScanner {
     private static final Pattern WAITING_ON_PATTERN = Pattern.compile(
             "^\\s+- waiting on <(0x[0-9a-fA-F]+)>(?:\\s+\\(a\\s+(.+?)\\))?\\s*$");
 
+    /** "Locked ownable synchronizers:" 段头 — JUC 锁（ReentrantLock 等）的持有信息 */
+    private static final Pattern OWNED_SYNC_HEADER = Pattern.compile(
+            "^\\s*Locked ownable synchronizers:\\s*$");
+
+    /** Locked ownable synchronizers 段内的锁行：- <0x...> (a xxx.Class) */
+    private static final Pattern OWNED_SYNC_LINE = Pattern.compile(
+            "^\\s+- <(0x[0-9a-fA-F]+)>(?:\\s+\\(a\\s+(.+?)\\))?\\s*$");
+
     // ================================================================
     // FSM 状态定义
     // ================================================================
 
     /**
      * 解析器内部状态枚举
+     * <p>
+     * jstack 线程块结构（以 JUC 死锁场景为例）：
+     * <pre>
+     *   "Thread-3" ...                    ← INIT → THREAD_HEADER
+     *      java.lang.Thread.State: ...    ← THREAD_HEADER → STACK_FRAMES
+     *      at xxx (...)
+     *      - parking to wait for  <...>
+     *      at xxx (...)
+     *      ...                            ← STACK_FRAMES 逐行解析
+     *      at java.lang.Thread.run(...)
+     *      （空行）                        ← STACK_FRAMES → POST_STACK（不能立即 finalize!）
+     *      Locked ownable synchronizers:  ← POST_STACK → OWNED_SYNCS
+     *      - <0x...> (...)                ← OWNED_SYNCS 解析 JUC 锁
+     *      （空行）                        ← OWNED_SYNCS → finalized → INIT
+     *   "Thread-2" ...
+     * </pre>
      */
     private enum ParserState {
         /** 初始/空闲状态，等待下一个线程头 */
@@ -91,7 +115,11 @@ public class JStackLineScanner {
         /** 已读到线程头，等待 Thread.State 行 */
         THREAD_HEADER,
         /** 已读到状态行，开始收集调用栈 */
-        STACK_FRAMES
+        STACK_FRAMES,
+        /** 栈帧结束后的空行 — 等待判断是否有 "Locked ownable synchronizers" 段 */
+        POST_STACK,
+        /** 正在解析 "Locked ownable synchronizers" 段 */
+        OWNED_SYNCS
     }
 
     // ================================================================
@@ -146,13 +174,64 @@ public class JStackLineScanner {
 
                 case STACK_FRAMES:
                     if (line.trim().isEmpty()) {
-                        // 空行 = 线程块结束
+                        // 空行 — 不能立即 finalize！可能后面有 "Locked ownable synchronizers"
+                        state = ParserState.POST_STACK;
+                    } else {
+                        // 解析各类调用帧和锁注解
+                        parseStackLine(line, current);
+                    }
+                    break;
+
+                case POST_STACK:
+                    if (OWNED_SYNC_HEADER.matcher(line).find()) {
+                        // 进入 JUC 锁持有段
+                        state = ParserState.OWNED_SYNCS;
+                    } else if (line.trim().isEmpty()) {
+                        // 连续空行，保持等待
+                    } else if (line.startsWith("\"")) {
+                        // 遇到了下一个线程头 → 先 finalize 当前线程，再处理新线程头
+                        finalizeThread(dump, current);
+                        current = tryParseThreadHeader(line);
+                        if (current != null) {
+                            state = ParserState.THREAD_HEADER;
+                        } else {
+                            state = ParserState.INIT;
+                        }
+                    } else {
+                        // 其他非空行 → finalize 当前线程，回到 INIT 重新处理此行
+                        finalizeThread(dump, current);
+                        current = tryParseThreadHeader(line);
+                        if (current != null) {
+                            state = ParserState.THREAD_HEADER;
+                        } else {
+                            state = ParserState.INIT;
+                        }
+                    }
+                    break;
+
+                case OWNED_SYNCS:
+                    Matcher syncLine = OWNED_SYNC_LINE.matcher(line);
+                    if (syncLine.find()) {
+                        // 收集 JUC 锁地址到 lockedMonitors
+                        if (current != null) {
+                            current.getLockedMonitors().add(syncLine.group(1));
+                            String cls = syncLine.group(2);
+                            if (cls != null) {
+                                current.getLockedMonitorClasses().add(cls);
+                            }
+                        }
+                    } else if ("- None".equals(line.trim()) || "- none".equals(line.trim())) {
+                        // 该线程不持有任何 JUC 锁
+                    } else if (line.trim().isEmpty()) {
+                        // 空行 = Owned Sync 段结束 → finalize
                         finalizeThread(dump, current);
                         current = null;
                         state = ParserState.INIT;
                     } else {
-                        // 解析各类调用帧和锁注解
-                        parseStackLine(line, current);
+                        // 未知行（不太可能出现），finalize 并回退
+                        finalizeThread(dump, current);
+                        current = null;
+                        state = ParserState.INIT;
                     }
                     break;
             }
@@ -224,8 +303,10 @@ public class JStackLineScanner {
      *   <li>AQS park ({@code - parking to wait for <0x...>})</li>
      *   <li>Object.wait ({@code - waiting on <0x...>})</li>
      * </ul>
+     * 注："Locked ownable synchronizers" 段由 FSM 的 OWNED_SYNCS 状态单独处理。
      */
     private void parseStackLine(String line, ThreadInfo thread) {
+
         // 调用帧
         Matcher frameMatcher = STACK_FRAME_PATTERN.matcher(line);
         if (frameMatcher.find()) {
