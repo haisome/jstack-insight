@@ -217,12 +217,41 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
       </div>
 
       {/* 底部链接 */}
-      <Space style={{ marginTop: 32, color: '#999' }}>
-        <GithubOutlined />
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {t('common.appName')} · {t('common.appDescription')}
-        </Text>
-      </Space>
+      <Popover
+        content={
+          <div style={{ fontSize: 13, lineHeight: 2 }}>
+            <div>
+              <GithubOutlined style={{ marginRight: 8 }} />
+              <a
+                href="https://github.com/haisome/jstack-insight"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                github.com/haisome/jstack-insight
+              </a>
+            </div>
+            <div>
+              <span style={{ marginRight: 8, fontWeight: 600, color: '#c71d23' }}>Gitee</span>
+              <a
+                href="https://gitee.com/Z-HaiSome/jstack-insight"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                gitee.com/Z-HaiSome/jstack-insight
+              </a>
+            </div>
+          </div>
+        }
+        trigger="hover"
+        placement="top"
+      >
+        <Space style={{ marginTop: 32, color: '#999', cursor: 'pointer' }}>
+          <GithubOutlined style={{ fontSize: 15 }} />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {t('common.appName')} · {t('common.appDescription')}
+          </Text>
+        </Space>
+      </Popover>
     </div>
   );
 };
