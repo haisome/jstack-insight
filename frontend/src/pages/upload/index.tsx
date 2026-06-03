@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import type { UploadFile, UploadProps } from 'antd';
 import { useTranslation } from 'react-i18next';
+import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { uploadAndAnalyze } from '../../services/api';
 import type { AnalysisResultVO } from '../../types';
 
@@ -85,8 +86,14 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '40px 24px',
+        position: 'relative',
       }}
     >
+      {/* 语言切换 - 右上角 */}
+      <div style={{ position: 'absolute', top: 16, right: 16 }}>
+        <LanguageSwitcher mode="dropdown" size="small" />
+      </div>
+
       {/* 标题区 */}
       <Space direction="vertical" align="center" style={{ marginBottom: 48 }}>
         <Title level={1} style={{ margin: 0, color: '#1677ff' }}>

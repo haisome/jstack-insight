@@ -105,7 +105,7 @@ const Overview: React.FC<OverviewProps> = ({ threadState }) => {
           const pct = totalThreads > 0 ? ((datum.value / totalThreads) * 100).toFixed(1) : '0.0';
           return {
             name: `${datum.type}（${info?.label || ''}）`,
-            value: `${datum.value} 个（${pct}%）`,
+            value: t('overview.tooltipCount', { count: datum.value, pct }),
             color: datum.color,
           };
         },

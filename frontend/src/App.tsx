@@ -4,7 +4,6 @@ import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
 import UploadPage from './pages/upload';
 import ResultPage from './pages/result';
-import LanguageSwitcher from './components/LanguageSwitcher';
 import type { AnalysisResultVO } from './types';
 
 // 导入 i18n 配置（确保初始化）
@@ -88,18 +87,6 @@ const App: React.FC = () => {
         ) : (
           <UploadPage onResult={(result, rawFile) => setAnalysisResult({ result, rawFile })} />
         )}
-        
-        {/* 语言切换按钮 - 固定在右上角 */}
-        <div
-          style={{
-            position: 'fixed',
-            top: 16,
-            right: 16,
-            zIndex: 1000,
-          }}
-        >
-          <LanguageSwitcher mode="dropdown" size="small" />
-        </div>
       </AntApp>
     </ConfigProvider>
   );

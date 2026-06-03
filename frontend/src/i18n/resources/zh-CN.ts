@@ -100,7 +100,11 @@ export const zhCN = {
     stateNewDesc: '已创建但尚未调用 start()',
     stateUnknown: '未知',
     stateUnknownDesc: '无法识别的线程状态',
+    count: '个数',
+    frames: '代表栈帧',
+    states: '状态',
     noData: '暂无数据',
+    tooltipCount: '{count}（{pct}%）',
   },
 
   // ========== 线程列表 / 相同堆栈分析 ==========
@@ -146,7 +150,19 @@ export const zhCN = {
     stackTrace: '完整调用栈',
     threadNames: '该组线程名（{count} 个）',
     copyAll: '复制全部',
+    count: '线程数',
+    stackGroupClickDetail: '点击查看详情',
+    andNMore: ' 等 {count} 个',
+    copyNamesSuccess: '线程名已复制到剪贴板',
+    copyNamesFail: '复制失败',
     noData: '暂无数据',
+    searchPlaceholder: '搜索包名/方法名，过滤堆栈组...',
+    threadListSearchPlaceholder: '搜索线程名/状态/栈帧...',
+    totalItems: '共 {total} 条',
+    maxGroup: '最大组 {count} 线程（{pct}%）',
+    stateCount: '{state}: {count} 线程',
+    stackFrameCount: '{count} 帧',
+    noFrame: '(无栈帧)',
   },
 
   // ========== 锁竞争图 ==========
@@ -182,6 +198,13 @@ export const zhCN = {
     copiedThreadStack: '已复制线程「{name}」的栈信息',
     copiedLock: '已复制锁对象「{name}」',
     filterResult: '未找到包含 "{keyword}" 的线程或锁',
+    clickCopyThreadHint: '💡 点击复制栈信息',
+    clickCopyLockHint: '💡 点击复制锁对象名',
+    warnNoStack: '未找到该线程的栈信息',
+    legendThreadNode: '线程节点',
+    legendLockNode: '锁对象',
+    legendHoldsEdge: '持有',
+    legendWaitingEdge: '等待',
   },
 
   // ========== 死锁检测 ==========
@@ -280,6 +303,9 @@ export const zhCN = {
   // ========== CPU 分析 ==========
   cpuAnalysis: {
     title: 'CPU 分析',
+    category: '分类',
+    evalReason: '评估理由',
+    stackDepth: '栈深度',
     noRunnable: '当前 jstack 文件中没有 RUNNABLE 状态的线程',
     noRunnableDesc: '无法进行 CPU 消耗推测，所有线程均处于等待或阻塞状态',
     evalMethodTitle: 'CPU 消耗线程推测方法',
@@ -362,5 +388,15 @@ export const zhCN = {
     nidHex: 'jstack 中的十六进制 nid',
     modalTitlePrecise: '线程详情 - {name}',
     modalCpu: 'CPU 占用：',
+    noFrame: '无栈帧',
+    reasonIoWait: '栈顶含 Native I/O 等待方法：{frame}',
+    reasonGcThread: '为 GC 或 JVM 系统线程',
+    reasonSharedTop: '与 {count} 个线程共享相同栈顶（疑似瓶颈点）',
+    reasonDeepStack: '调用栈异常深（{count} 帧），疑似深度递归或复杂调用',
+    reasonLoopFrame: '检测到重复栈帧（{total} 帧中仅 {unique} 个唯一帧），疑似死循环或无限递归',
+    reasonDefault: 'RUNNABLE 且栈顶无 Native I/O 等待，推测为业务计算线程',
+    preciseExplanation: '基于单次 jstack 快照的推测，无法精确量化 CPU 占用率。上传 top -H 文件后，通过 TOP的PID(十进制) ↔ JStack的NID(十六进制) 关联，获得每个线程的精确 CPU 占用率。',
+    topPidPlaceholder: '<top中的PID>',
+    hexComment: ' # 输出十六进制',
   },
 };

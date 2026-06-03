@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Card, Table, Tag, Typography, Empty, Popover, Modal, Input, message } from 'antd';
 import { SearchOutlined, BugOutlined, QuestionCircleOutlined, CopyOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import type { ThreadSummary } from '../../types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -30,42 +31,6 @@ const stateColorMap: Record<string, string> = {
   NEW: 'green',
   UNKNOWN: 'default',
 };
-
-/** 使用说明 */
-const HELP_CONTENT = (
-  <div style={{ maxWidth: 400 }}>
-    <p style={{ margin: '0 0 8px' }}>
-      <strong>相同堆栈分析</strong>（RSI 模式）帮助快速定位线程堆积瓶颈。
-    </p>
-    <ul style={{ margin: 0, paddingLeft: 18 }}>
-      <li><strong>原理</strong>：大量线程拥有相同调用栈 = 同一瓶颈点堆积（参考 fastThread RSI 模式）</li>
-      <li><strong>代表栈帧</strong>：取该组第一、第二栈帧作为标识，点击行可查看完整栈</li>
-      <li><strong>搜索</strong>：输入包名/方法名，过滤包含该关键词的堆栈组</li>
-      <li><strong>排序</strong>：默认按线程数降序，线程数越多越可能是瓶颈</li>
-    </ul>
-    <p style={{ margin: '8px 0 0', color: '#999', fontSize: 12 }}>
-      严重 RSI：线程数 &gt; 总线程 30% 且处于 BLOCKED/WAITING 状态，大概率存在锁竞争或外部依赖阻塞。
-    </p>
-  </div>
-);
-
-/** 线程列表使用说明 */
-const THREAD_HELP = (
-  <div style={{ maxWidth: 380 }}>
-    <p style={{ margin: '0 0 8px' }}>
-      <strong>线程列表</strong>展示转储中所有线程的详细信息。
-    </p>
-    <ul style={{ margin: 0, paddingLeft: 18 }}>
-      <li><strong>搜索</strong>：支持按线程名、状态、栈帧内容过滤</li>
-      <li><strong>状态过滤</strong>：点击「状态」列标题的漏斗图标筛选</li>
-      <li><strong>展开行</strong>：点击行左侧展开按钮查看完整调用栈</li>
-      <li><strong>分页</strong>：支持切换每页显示 10/20/50/100 条</li>
-    </ul>
-    <p style={{ margin: '8px 0 0', color: '#999' }}>
-      红色行 = 参与死锁的线程，⚠ 标记 = BLOCKED 且处于死锁环中。
-    </p>
-  </div>
-);
 
 // ========== 锁信息渲染辅助 ==========
 
@@ -162,6 +127,7 @@ const LockInfoSection: React.FC<{ thread: ThreadSummary }> = ({ thread }) => {
  * 相同堆栈分析卡片
  */
 const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
+  const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
   const [modalGroup, setModalGroup] = useState<StackGroup | null>(null);
 
@@ -185,7 +151,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
         count: arr.length,
         sampleThread: arr[0],
         allThreads: arr,
-        firstFrame: arr[0].stackTrace[0] || '(无栈帧)',
+        firstFrame: arr[0].stackTrace[0] || t('threads.noFrame'),
         secondFrame: arr[0].stackTrace[1] || '',
         states,
       });
@@ -214,7 +180,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
 
   const columns: ColumnsType<StackGroup> = [
     {
-      title: '线程数',
+      title: t('threads.count'),
       dataIndex: 'count',
       key: 'count',
       width: 90,
@@ -229,7 +195,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
     {
       title: (
         <span>
-          代表栈帧 <span style={{ fontSize: 11, color: '#999', fontWeight: 400 }}>点击查看详情</span>
+          {t('overview.frames')} <span style={{ fontSize: 11, color: '#999', fontWeight: 400 }}>{t('threads.stackGroupClickDetail')}</span>
         </span>
       ),
       key: 'frames',
@@ -248,7 +214,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
       ),
     },
     {
-      title: '状态',
+      title: t('threads.state'),
       key: 'states',
       width: 140,
       render: (_: unknown, g: StackGroup) => (
@@ -266,7 +232,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
       ),
     },
     {
-      title: '线程名',
+      title: t('threads.threadName'),
       key: 'names',
       ellipsis: true,
       render: (_: unknown, g: StackGroup) => (
@@ -275,7 +241,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
             .slice(0, 3)
             .map((t) => t.name)
             .join('、')}
-          {g.allThreads.length > 3 && ` 等 ${g.allThreads.length} 个`}
+          {g.allThreads.length > 3 && t('threads.andNMore', { count: g.allThreads.length })}
         </span>
       ),
     },
@@ -286,21 +252,37 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
       title={
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Title level={5} style={{ margin: 0 }}>
-            相同堆栈分析
+            {t('threads.sameStackTitle')}
           </Title>
           <Tag color={parseFloat(topGroupPct) > 30 ? 'red' : 'blue'} style={{ fontSize: 11, margin: 0 }}>
-            {totalGroups} 组 &nbsp;|&nbsp; 最大组 {topGroup?.count || 0} 线程（{topGroupPct}%）
+            {t('threads.maxGroup', { count: topGroup?.count || 0, pct: topGroupPct })}
           </Tag>
         </span>
       }
       extra={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Popover content={HELP_CONTENT} title="使用说明（RSI 模式）" placement="topRight">
+          <Popover
+            content={
+              <div style={{ maxWidth: 400 }}>
+                <p style={{ margin: '0 0 8px' }}>{t('threads.sameStackHelp')}</p>
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  <li>{t('threads.sameStackHelpPrinciple')}</li>
+                  <li>{t('threads.sameStackHelpFrame')}</li>
+                  <li>{t('threads.sameStackHelpSearch')}</li>
+                  <li>{t('threads.sameStackHelpSort')}</li>
+                </ul>
+                <p style={{ margin: '8px 0 0', color: '#999', fontSize: 12 }}>
+                  {t('threads.sameStackHelpSevere')}
+                </p>
+              </div>
+            }
+            title={t('threads.sameStackHelpTitle')} placement="topRight"
+          >
             <QuestionCircleOutlined style={{ color: '#999', cursor: 'pointer' }} />
           </Popover>
           <Input
             prefix={<SearchOutlined style={{ color: '#bbb' }} />}
-            placeholder="搜索包名/方法名，过滤堆栈组..."
+            placeholder={t('threads.searchPlaceholder')}
             allowClear
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
@@ -312,7 +294,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
       style={{ marginBottom: 16 }}
     >
       {filteredGroups.length === 0 ? (
-        <Empty description="无匹配的堆栈组" style={{ padding: 20 }} />
+        <Empty description={t('threads.emptyStackGroup')} style={{ padding: 20 }} />
       ) : (
         <Table<StackGroup>
           dataSource={filteredGroups}
@@ -323,7 +305,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
             defaultPageSize: 10,
             showSizeChanger: true,
             pageSizeOptions: [10, 15, 20, 50],
-            showTotal: (total) => `共 ${total} 个堆栈组`,
+            showTotal: (total) => t('threads.totalStackGroups', { total }),
           }}
           onRow={(record) => ({
             onClick: () => setModalGroup(record),
@@ -335,11 +317,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
 
       {/* 详情 Modal */}
       <Modal
-        title={
-          <span style={{ fontSize: 15 }}>
-            堆栈组详情 — <span style={{ color: '#1890ff' }}>{modalGroup?.count} 个线程</span>
-          </span>
-        }
+        title={t('threads.stackGroupDetail', { count: modalGroup?.count })}
         open={!!modalGroup}
         onCancel={() => setModalGroup(null)}
         footer={null}
@@ -351,7 +329,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
             <div style={{ marginBottom: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {Object.entries(modalGroup.states).map(([s, c]) => (
                 <Tag key={s} color={stateColorMap[s] || 'default'} style={{ fontWeight: 600, padding: '2px 10px' }}>
-                  {s}: {c} 线程
+                  {t('threads.stateCount', { state: s, count: c })}
                 </Tag>
               ))}
             </div>
@@ -361,7 +339,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
             {/* 完整调用栈（原始 jstack 格式） */}
             <div style={{ marginBottom: 12 }}>
               <Text strong style={{ fontSize: 13, marginBottom: 6, display: 'block' }}>
-                完整调用栈
+                {t('threads.stackTrace')}
               </Text>
               <pre
                 style={{
@@ -396,17 +374,17 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
             {/* 线程名列表 */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <Text strong style={{ fontSize: 13 }}>该组线程名（{modalGroup.allThreads.length} 个）</Text>
+                <Text strong style={{ fontSize: 13 }}>{t('threads.threadNames', { count: modalGroup.allThreads.length })}</Text>
                 <span
                   onClick={() => {
                     const text = modalGroup.allThreads.map((t) => t.name).join('\n');
                     navigator.clipboard?.writeText(text).then(() => {
-                      message.success('线程名已复制到剪贴板');
-                    }).catch(() => message.error('复制失败'));
+                      message.success(t('threads.copyNamesSuccess'));
+                    }).catch(() => message.error(t('threads.copyNamesFail')));
                   }}
                   style={{ cursor: 'pointer', fontSize: 12, color: '#1890ff' }}
                 >
-                  <CopyOutlined /> 复制全部
+                  <CopyOutlined /> {t('threads.copyAll')}
                 </span>
               </div>
               <div
@@ -438,6 +416,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
 // ========== 线程列表（原样保留） ==========
 
 const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
+  const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
 
   const filtered = searchText
@@ -453,7 +432,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
 
   const columns: ColumnsType<ThreadSummary> = [
     {
-      title: '线程名',
+      title: t('threads.threadName'),
       dataIndex: 'name',
       key: 'name',
       width: 280,
@@ -468,7 +447,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
       ),
     },
     {
-      title: 'NID',
+      title: t('threads.nid'),
       dataIndex: 'nid',
       key: 'nid',
       width: 100,
@@ -479,7 +458,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
       ),
     },
     {
-      title: '状态',
+      title: t('threads.state'),
       dataIndex: 'state',
       key: 'state',
       width: 140,
@@ -499,7 +478,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
       onFilter: (value, record) => record.state === value,
     },
     {
-      title: '等待锁',
+      title: t('threads.waitingLock'),
       dataIndex: 'waitingOnLock',
       key: 'waitingOnLock',
       width: 200,
@@ -515,7 +494,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
         ),
     },
     {
-      title: '栈深度',
+      title: t('threads.stackDepth'),
       key: 'stackDepth',
       width: 90,
       render: (_: unknown, record) => record.stackTrace.length,
@@ -527,17 +506,33 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
     <Card
       title={
         <Title level={5} style={{ margin: 0 }}>
-          线程列表（{filtered.length} / {threads.length}）
+          {t('threads.filtered', { filtered: filtered.length, total: threads.length })}
         </Title>
       }
       extra={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Popover content={THREAD_HELP} title="使用说明" placement="topRight">
+          <Popover
+            content={
+              <div style={{ maxWidth: 380 }}>
+                <p style={{ margin: '0 0 8px' }}>{t('threads.threadListHelp')}</p>
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  <li>{t('threads.threadListHelpSearch')}</li>
+                  <li>{t('threads.threadListHelpFilter')}</li>
+                  <li>{t('threads.threadListHelpExpand')}</li>
+                  <li>{t('threads.threadListHelpPage')}</li>
+                </ul>
+                <p style={{ margin: '8px 0 0', color: '#999' }}>
+                  {t('threads.threadListHelpDeadlock')}
+                </p>
+              </div>
+            }
+            title={t('threads.threadListHelpTitle')} placement="topRight"
+          >
             <QuestionCircleOutlined style={{ color: '#999', cursor: 'pointer' }} />
           </Popover>
           <Input
             prefix={<SearchOutlined style={{ color: '#bbb' }} />}
-            placeholder="搜索线程名/状态/栈帧..."
+            placeholder={t('threads.threadListSearchPlaceholder')}
             allowClear
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
@@ -555,7 +550,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
           defaultPageSize: 20,
           showSizeChanger: true,
           pageSizeOptions: [10, 20, 50, 100],
-          showTotal: (total) => `共 ${total} 条`,
+          showTotal: (total) => t('threads.totalItems', { total }),
         }}
         expandable={{
           expandedRowRender: (record) => {
@@ -563,7 +558,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
             return (
               <div style={{ padding: '4px 0' }}>
                 <Text strong style={{ fontSize: 13 }}>
-                  调用栈（{record.stackTrace.length} 帧）
+                  {t('threads.stackTrace')}（{t('threads.stackFrameCount', { count: record.stackTrace.length })}）
                 </Text>
                 <pre
                   style={{
@@ -601,7 +596,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
         size="middle"
         scroll={{ x: 800 }}
         locale={{
-          emptyText: <Empty description="无匹配的线程" />,
+          emptyText: <Empty description={t('threads.noMatchingThreads')} />,
         }}
         rowClassName={(record) =>
           record.inDeadlock ? 'deadlock-row' : ''

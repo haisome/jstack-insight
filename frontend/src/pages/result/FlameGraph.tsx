@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import * as d3 from 'd3';
 import { Card, Typography, Empty, Popover, Input, message } from 'antd';
 import { QuestionCircleOutlined, SearchOutlined, CopyOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import type { FlameGraphVO, FlameNode } from '../../types';
 
 const { Title } = Typography;
@@ -32,30 +33,12 @@ interface TooltipInfo {
   colorCategory: string;
 }
 
-/** 使用说明 */
-const HELP_CONTENT = (
-  <div style={{ maxWidth: 400 }}>
-    <p style={{ margin: '0 0 8px' }}>
-      <strong>火焰图</strong>展示所有线程的调用栈聚合视图，帮助快速定位热点方法。
-    </p>
-    <ul style={{ margin: 0, paddingLeft: 18 }}>
-      <li><strong>宽度</strong>：越宽代表该栈帧覆盖的线程数越多（越热）</li>
-      <li><strong>深度</strong>：从上到下为调用链路（上方是入口，下方是深层调用）</li>
-      <li><strong>颜色</strong>：JDK 蓝色 / Spring 绿色 / 应用代码 橙色 / 其他 灰色</li>
-      <li><strong>交互</strong>：鼠标悬浮查看完整方法签名和线程数，点击可复制栈信息</li>
-      <li><strong>搜索</strong>：输入包名或方法名，高亮匹配栈帧</li>
-    </ul>
-    <p style={{ margin: '8px 0 0', color: '#999' }}>
-      重点关注宽度大的橙色（应用代码）节点 — 这些是最可能的性能瓶颈。
-    </p>
-  </div>
-);
-
 /**
  * D3 火焰图组件 — 纯 SVG icicle chart 实现
  * 使用 d3.partition 布局，每个矩形代表一个栈帧，宽度正比于覆盖线程数
  */
 const D3FlameChart: React.FC<{ data: FlameNode; searchTerm?: string }> = ({ data, searchTerm }) => {
+  const { t } = useTranslation();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
@@ -166,11 +149,11 @@ const D3FlameChart: React.FC<{ data: FlameNode; searchTerm?: string }> = ({ data
         setTooltip(null);
       })
       .on('click', function (_event: MouseEvent, d: RectNode) {
-        const text = `${d.data.fullSignature || d.data.name}（${d.value} 线程, 深度 ${d.depth}）`;
-        navigator.clipboard?.writeText(text).then(() => {
-          message.success('栈信息已复制到剪贴板');
+        const sig = d.data.fullSignature || d.data.name;
+        navigator.clipboard?.writeText(sig).then(() => {
+          message.success(t('flameGraph.copied'));
         }).catch(() => {
-          message.error('复制失败');
+          message.error(t('flameGraph.copyFail'));
         });
       });
 
@@ -255,7 +238,7 @@ const D3FlameChart: React.FC<{ data: FlameNode; searchTerm?: string }> = ({ data
               {tooltip.fullSignature || tooltip.name}
             </div>
             <div style={{ opacity: 0.8, marginBottom: 6 }}>
-              覆盖线程数: <strong>{tooltip.value}</strong> &nbsp;|&nbsp; 调用深度: {tooltip.depth}
+              {t('flameGraph.tooltipThreads', { value: tooltip.value, depth: tooltip.depth })}
             </div>
             <div
               style={{
@@ -266,7 +249,7 @@ const D3FlameChart: React.FC<{ data: FlameNode; searchTerm?: string }> = ({ data
                 opacity: 0.6,
               }}
             >
-              <CopyOutlined /> 点击栈帧可复制信息
+              <CopyOutlined /> {t('flameGraph.tooltipClick')}
             </div>
           </div>
         );
@@ -276,6 +259,7 @@ const D3FlameChart: React.FC<{ data: FlameNode; searchTerm?: string }> = ({ data
 };
 
 const FlameGraph: React.FC<FlameGraphProps> = ({ flameGraph }) => {
+  const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
 
   // 计算搜索匹配数量
@@ -303,16 +287,32 @@ const FlameGraph: React.FC<FlameGraphProps> = ({ flameGraph }) => {
       <Card
         title={
           <Title level={5} style={{ margin: 0 }}>
-            火焰图
+            {t('flameGraph.title')}
           </Title>
         }
         extra={
-          <Popover content={HELP_CONTENT} title="使用说明" placement="topRight">
+          <Popover content={
+            <div style={{ maxWidth: 400 }}>
+              <p style={{ margin: '0 0 8px' }}>
+                <strong>{t('flameGraph.helpContent')}</strong>
+              </p>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                <li><strong>{t('flameGraph.helpWidth')}</strong></li>
+                <li><strong>{t('flameGraph.helpDepth')}</strong></li>
+                <li><strong>{t('flameGraph.helpColor')}</strong></li>
+                <li><strong>{t('flameGraph.helpInteraction')}</strong></li>
+                <li><strong>{t('flameGraph.helpSearch')}</strong></li>
+              </ul>
+              <p style={{ margin: '8px 0 0', color: '#999' }}>
+                {t('flameGraph.helpFocus')}
+              </p>
+            </div>
+          } title={t('flameGraph.helpTitle')} placement="topRight">
             <QuestionCircleOutlined style={{ color: '#999', cursor: 'pointer' }} />
           </Popover>
         }
       >
-        <Empty description="调用栈数据不足，无法生成火焰图" />
+        <Empty description={t('flameGraph.noData')} />
       </Card>
     );
   }
@@ -321,11 +321,27 @@ const FlameGraph: React.FC<FlameGraphProps> = ({ flameGraph }) => {
     <Card
       title={
         <Title level={5} style={{ margin: 0 }}>
-          火焰图
+          {t('flameGraph.title')}
         </Title>
       }
       extra={
-        <Popover content={HELP_CONTENT} title="使用说明" placement="topRight">
+        <Popover content={
+          <div style={{ maxWidth: 400 }}>
+            <p style={{ margin: '0 0 8px' }}>
+              <strong>{t('flameGraph.helpContent')}</strong>
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              <li><strong>{t('flameGraph.helpWidth')}</strong></li>
+              <li><strong>{t('flameGraph.helpDepth')}</strong></li>
+              <li><strong>{t('flameGraph.helpColor')}</strong></li>
+              <li><strong>{t('flameGraph.helpInteraction')}</strong></li>
+              <li><strong>{t('flameGraph.helpSearch')}</strong></li>
+            </ul>
+            <p style={{ margin: '8px 0 0', color: '#999' }}>
+              {t('flameGraph.helpFocus')}
+            </p>
+          </div>
+        } title={t('flameGraph.helpTitle')} placement="topRight">
           <QuestionCircleOutlined style={{ color: '#999', cursor: 'pointer' }} />
         </Popover>
       }
@@ -342,71 +358,71 @@ const FlameGraph: React.FC<FlameGraphProps> = ({ flameGraph }) => {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-            <span
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 2,
-                background: COLOR_MAP.jdk,
-                display: 'inline-block',
-              }}
-            />{' '}
-            JDK
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-            <span
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 2,
-                background: COLOR_MAP.spring,
-                display: 'inline-block',
-              }}
-            />{' '}
-            Spring
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-            <span
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 2,
-                background: COLOR_MAP.app,
-                display: 'inline-block',
-              }}
-            />{' '}
-            应用代码
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-            <span
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 2,
-                background: COLOR_MAP.other,
-                display: 'inline-block',
-              }}
-            />{' '}
-            其他
-          </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+              <span
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 2,
+                  background: COLOR_MAP.jdk,
+                  display: 'inline-block',
+                }}
+              />{' '}
+              {t('flameGraph.colorJdk')}
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+              <span
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 2,
+                  background: COLOR_MAP.spring,
+                  display: 'inline-block',
+                }}
+              />{' '}
+              {t('flameGraph.colorSpring')}
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+              <span
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 2,
+                  background: COLOR_MAP.app,
+                  display: 'inline-block',
+                }}
+              />{' '}
+              {t('flameGraph.colorApp')}
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+              <span
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 2,
+                  background: COLOR_MAP.other,
+                  display: 'inline-block',
+                }}
+              />{' '}
+              {t('flameGraph.colorOther')}
+            </span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Input
-            prefix={<SearchOutlined style={{ color: '#bbb' }} />}
-            placeholder="搜索包名或方法名，如 com.yourcompany"
-            allowClear
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ width: 260, minWidth: 180 }}
-            size="small"
-          />
-          {searchTerm && (
-            <span style={{ color: '#999', fontSize: 12, whiteSpace: 'nowrap' }}>
-              匹配 <strong style={{ color: '#1677ff' }}>{matchCount}</strong> 个栈帧
-            </span>
-          )}
+            <Input
+              prefix={<SearchOutlined style={{ color: '#bbb' }} />}
+              placeholder={t('flameGraph.searchPlaceholder')}
+              allowClear
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{ width: 260, minWidth: 180 }}
+              size="small"
+            />
+            {searchTerm && (
+              <span style={{ color: '#999', fontSize: 12, whiteSpace: 'nowrap' }}>
+                {t('flameGraph.matchCount', { count: matchCount })}
+              </span>
+            )}
         </div>
       </div>
 

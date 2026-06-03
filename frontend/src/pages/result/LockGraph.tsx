@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { Card, Typography, Alert, Empty, Tooltip, Badge, Space, Tag, Popover, Button, Input, InputNumber, message } from 'antd';
 import { QuestionCircleOutlined, PlusOutlined, MinusOutlined, ExpandOutlined, FilterOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import type { LockGraphVO, GraphNode, GraphEdge, ThreadSummary } from '../../types';
 
 const { Title, Text } = Typography;
@@ -25,26 +26,10 @@ interface LockGraphProps {
  *
  * 死锁高亮：死锁环路中的节点和边显示为红色
  */
-/** 锁竞争图使用说明 */
-const LOCK_HELP_CONTENT = (
-  <div style={{ maxWidth: 400 }}>
-    <p style={{ margin: '0 0 8px' }}>
-      <strong>锁竞争图</strong>用力导向图展示线程与锁之间的持有/等待关系。
-    </p>
-    <ul style={{ margin: 0, paddingLeft: 18 }}>
-      <li><strong>圆形节点</strong> = 线程（蓝色正常，黄色 BLOCKED，红色=死锁线程）</li>
-      <li><strong>方形节点</strong> = 锁对象（Monitor / ReentrantLock）</li>
-      <li><strong>实线</strong> = 线程持有该锁</li>
-      <li><strong>虚线</strong> = 线程等待获取该锁</li>
-      <li><strong>红色高亮</strong> = 死锁环路中的节点/边</li>
-    </ul>
-    <p style={{ margin: '8px 0 0', color: '#999' }}>
-      操作：拖拽节点可调整布局，滚轮缩放，悬浮查看详情。
-    </p>
-  </div>
-);
+/** 锁竞争图使用说明 — 模块级常量，内容通过 i18n 在组件中渲染 */
 
 const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = true }) => {
+  const { t } = useTranslation();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const simulationRef = useRef<d3.Simulation<SimNode, SimEdge> | null>(null);
@@ -68,7 +53,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
 
   // ========== 过滤：包名/锁名 + 自定义延迟 ==========
   const [filterText, setFilterText] = useState('');
-  const [debounceDelay, setDebounceDelay] = useState(300);
+  const [debounceDelay, setDebounceDelay] = useState(500);
   const [activeFilter, setActiveFilter] = useState('');
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -466,7 +451,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
             if (thread) {
               const stackText = buildRawStackLines(thread).join('\n');
               navigator.clipboard.writeText(stackText).then(() => {
-                message.success(`已复制线程「${d.label}」的栈信息`);
+                message.success(t('lockGraph.copiedThreadStack', { name: d.label }));
               }).catch(() => {
                 // 剪贴板 API 不可用时降级为 document.execCommand
                 const textarea = document.createElement('textarea');
@@ -475,15 +460,15 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
                 textarea.select();
                 document.execCommand('copy');
                 document.body.removeChild(textarea);
-                message.success(`已复制线程「${d.label}」的栈信息`);
+                message.success(t('lockGraph.copiedThreadStack', { name: d.label }));
               });
             } else {
-              message.warning('未找到该线程的栈信息');
+              message.warning(t('lockGraph.warnNoStack'));
             }
           } else if (d.type === 'LOCK') {
             // 点击锁节点：复制锁对象信息
             navigator.clipboard.writeText(d.label).then(() => {
-              message.success(`已复制锁对象「${d.label}」`);
+              message.success(t('lockGraph.copiedLock', { name: d.label }));
             }).catch(() => {
               const textarea = document.createElement('textarea');
               textarea.value = d.label;
@@ -491,7 +476,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
               textarea.select();
               document.execCommand('copy');
               document.body.removeChild(textarea);
-              message.success(`已复制锁对象「${d.label}」`);
+              message.success(t('lockGraph.copiedLock', { name: d.label }));
             });
           }
         });
@@ -523,8 +508,8 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
   }, [displayNodes, displayEdges, containerWidth, visible]);
   if (nodes.length === 0) {
     return (
-      <Card title={<Title level={5} style={{ margin: 0 }}>锁竞争图</Title>}>
-        <Empty description="未检测到锁竞争关系" />
+      <Card title={<Title level={5} style={{ margin: 0 }}>{t('lockGraph.title')}</Title>}>
+        <Empty description={t('lockGraph.noData')} />
       </Card>
     );
   }
@@ -533,9 +518,12 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
     <Card
       title={
         <Space>
-          <Title level={5} style={{ margin: 0 }}>锁竞争图</Title>
+          <Title level={5} style={{ margin: 0 }}>{t('lockGraph.title')}</Title>
           <Badge
-            count={activeFilter ? `${displayNodes.length}/${nodes.length} 节点` : `${nodes.length} 节点`}
+            count={activeFilter
+              ? t('lockGraph.filteredNodeCount', { display: displayNodes.length, total: nodes.length })
+              : t('lockGraph.nodeCount', { count: nodes.length })
+            }
             style={{ backgroundColor: activeFilter ? '#722ed1' : '#1677ff' }}
           />
           {activeFilter && (
@@ -547,10 +535,27 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
       }
       extra={
         <Space>
-          <Popover content={LOCK_HELP_CONTENT} title="使用说明" placement="topRight">
+          <Popover
+            content={
+              <div style={{ maxWidth: 400 }}>
+                <p style={{ margin: '0 0 8px' }}>{t('lockGraph.helpContent')}</p>
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  <li>{t('lockGraph.helpNodeThread')}</li>
+                  <li>{t('lockGraph.helpNodeLock')}</li>
+                  <li>{t('lockGraph.helpEdgeHolds')}</li>
+                  <li>{t('lockGraph.helpEdgeWaiting')}</li>
+                  <li>{t('lockGraph.helpDeadlock')}</li>
+                </ul>
+                <p style={{ margin: '8px 0 0', color: '#999' }}>{t('lockGraph.helpOperation')}</p>
+              </div>
+            }
+            title={t('lockGraph.helpTitle')} placement="topRight"
+          >
             <QuestionCircleOutlined style={{ color: '#999', cursor: 'pointer' }} />
           </Popover>
-          <span style={{ fontSize: 12, color: '#666' }}>● 线程节点 &nbsp; ■ 锁对象 &nbsp; ━ 持有 &nbsp; ┄ 等待</span>
+          <span style={{ fontSize: 12, color: '#666' }}>
+            ● {t('lockGraph.legendThreadNode')} &nbsp; ■ {t('lockGraph.legendLockNode')} &nbsp; ━ {t('lockGraph.legendHoldsEdge')} &nbsp; ┄ {t('lockGraph.legendWaitingEdge')}
+          </span>
         </Space>
       }
     >
@@ -570,7 +575,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
       >
         <FilterOutlined style={{ color: '#722ed1', fontSize: 14 }} />
         <Input
-          placeholder="输入包名或锁类名进行筛选，如 com.zeng 或 HashMap"
+          placeholder={t('lockGraph.filterPlaceholder')}
           value={filterText}
           onChange={(e) => handleFilterChange(e.target.value)}
           onPressEnter={handleFilterConfirm}
@@ -578,13 +583,13 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
           allowClear
           style={{ flex: 1, minWidth: 260 }}
         />
-        <span style={{ fontSize: 12, color: '#999', whiteSpace: 'nowrap' }}>延迟</span>
+        <span style={{ fontSize: 12, color: '#999', whiteSpace: 'nowrap' }}>{t('lockGraph.delayLabel')}</span>
         <InputNumber
           min={0}
           max={5000}
           step={100}
           value={debounceDelay}
-          onChange={(v) => setDebounceDelay(v ?? 300)}
+          onChange={(v) => setDebounceDelay(v ?? 500)}
           addonAfter="ms"
           size="middle"
           style={{ width: 120 }}
@@ -594,7 +599,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
       {/* 过滤后无结果 */}
       {activeFilter && displayNodes.length === 0 && (
         <Empty
-          description={`未找到包含 "${activeFilter}" 的线程或锁`}
+          description={t('lockGraph.filterResult', { keyword: activeFilter })}
           style={{ marginBottom: 16 }}
         />
       )}
@@ -606,7 +611,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
           showIcon
           closable
           style={{ marginBottom: 16, borderRadius: 8 }}
-          message="检测到死锁环路！"
+          message={t('lockGraph.deadlockAlert')}
           description={
             <div>
               {deadlockChains.map((chain, i) => (
@@ -651,7 +656,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
                 <Text
                   style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}
                 >
-                  {tooltipInfo.node.type === 'THREAD' ? '线程' : '锁'}
+                  {tooltipInfo.node.type === 'THREAD' ? t('lockGraph.tooltipThread') : t('lockGraph.tooltipLock')}
                 </Text>
                 <br />
                 <Text style={{ color: '#ddd' }}>
@@ -661,24 +666,26 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
                   <>
                     <br />
                     <Text style={{ color: '#ddd' }}>
-                      状态: {tooltipInfo.node.state}
+                      {t('lockGraph.tooltipState')}{tooltipInfo.node.state}
                     </Text>
                   </>
                 )}
                 {tooltipInfo.node.inDeadlock && (
                   <div style={{ color: '#ff4d4f', fontWeight: 600, marginTop: 4 }}>
-                    ⚠ 参与死锁
+                    {t('lockGraph.tooltipDeadlock')}
                   </div>
                 )}
                 <div style={{ color: '#8cc8ff', fontSize: 11, marginTop: 6, fontStyle: 'italic' }}>
-                  💡 点击复制{tooltipInfo.node.type === 'THREAD' ? '栈信息' : '锁对象名'}
+                  {tooltipInfo.node.type === 'THREAD'
+                    ? t('lockGraph.clickCopyThreadHint')
+                    : t('lockGraph.clickCopyLockHint')}
                 </div>
               </>
             )}
             {tooltipInfo.edge && (
               <>
                 <Text style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>
-                  {tooltipInfo.edge.relation === 'HOLDS' ? '持有' : '等待'}
+                  {tooltipInfo.edge.relation === 'HOLDS' ? t('threads.relationHolds') : t('threads.relationWaiting')}
                 </Text>
                 <br />
                 <Text style={{ color: '#ddd', fontSize: 12 }}>
@@ -686,7 +693,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
                 </Text>
                 {tooltipInfo.edge.inDeadlock && (
                   <div style={{ color: '#ff4d4f', fontWeight: 600, marginTop: 4 }}>
-                    ⚠ 死锁链路
+                    {t('threads.deadlockChain')}
                   </div>
                 )}
               </>
@@ -711,19 +718,19 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#1677ff', display: 'inline-block' }} />
-            <span>RUNNABLE</span>
+            <span>{t('lockGraph.legendRunnable')}</span>
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#faad14', display: 'inline-block' }} />
-            <span>BLOCKED</span>
+            <span>{t('lockGraph.legendBlocked')}</span>
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#d9d9d9', display: 'inline-block' }} />
-            <span>WAITING</span>
+            <span>{t('lockGraph.legendWaiting')}</span>
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             <span style={{ width: 10, height: 10, borderRadius: 3, background: '#52c41a', display: 'inline-block' }} />
-            <span>锁</span>
+            <span>{t('lockGraph.legendLock')}</span>
           </span>
         </div>
 
@@ -739,7 +746,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
             zIndex: 50,
           }}
         >
-          <Tooltip title="放大" placement="right">
+          <Tooltip title={t('lockGraph.zoomIn')} placement="right">
             <Button
               type="text"
               size="small"
@@ -754,7 +761,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
               }}
             />
           </Tooltip>
-          <Tooltip title="缩小" placement="right">
+          <Tooltip title={t('lockGraph.zoomOut')} placement="right">
             <Button
               type="text"
               size="small"
@@ -769,7 +776,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
               }}
             />
           </Tooltip>
-          <Tooltip title="适应视图" placement="right">
+          <Tooltip title={t('lockGraph.fitView')} placement="right">
             <Button
               type="text"
               size="small"

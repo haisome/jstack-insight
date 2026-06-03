@@ -16,6 +16,7 @@ import {
   AimOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
+import LanguageSwitcher from '../../components/LanguageSwitcher';
 import Overview from './Overview';
 import Threads from './Threads';
 import LockGraph from './LockGraph';
@@ -331,6 +332,17 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
             />
           </Space>
           <Space size={8}>
+            <LanguageSwitcher mode="dropdown" size="small" />
+            {(deadlockChain.detected || lockGraph.hasDeadlock) && (
+              <div
+                style={{
+                  width: 1,
+                  height: 14,
+                  background: '#e8e8e8',
+                  display: 'inline-block',
+                }}
+              />
+            )}
             {deadlockChain.detected && (
               <Tag color="red" style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, fontWeight: 500 }}>
                 <BugOutlined /> {t('result.deadlockCount', { count: deadlockChain.chains.length })}

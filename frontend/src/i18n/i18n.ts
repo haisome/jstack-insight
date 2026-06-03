@@ -39,6 +39,8 @@ i18n
     // 插值配置
     interpolation: {
       escapeValue: false, // React 已经做了 XSS 防护
+      prefix: '{',        // 翻译文件中使用 {variable} 单花括号语法
+      suffix: '}',
     },
 
     // React 配置
