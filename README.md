@@ -13,7 +13,7 @@
 
 **JStack Insight** 是一个面向 Java 开发者和 SRE 的 jstack 线程转储分析工具。上传 `jstack` 输出的文本文件，即可获得线程状态分布、锁竞争图、火焰图、死锁检测等多维度分析结果，帮助快速定位线上 CPU 飙升、线程死锁、线程池堆积等性能问题。
 
-设计灵感来源于 [fastthread.io](https://fastthread.io)，但更聚焦于自建部署和企业级集成。
+设计灵感来源于 [fastthread.io](https://fastthread.io)。
 
 ---
 
@@ -170,6 +170,23 @@ spring:
 
 [![GitHub](https://img.shields.io/badge/GitHub-haisome%2Fjstack--insight-181717?style=flat-square&logo=github)](https://github.com/haisome/jstack-insight)
 [![Gitee](https://img.shields.io/badge/Gitee-Z--HaiSome%2Fjstack--insight-c71d23?style=flat-square&logo=gitee)](https://gitee.com/Z-HaiSome/jstack-insight)
+
+---
+
+## 参考资源
+
+本项目的线程检测与分析模式参考自 [fastthread.io](https://fastthread.io) 专业博客，以下为核心参考文章：
+
+| 主题 | 链接 | 说明 |
+|------|------|------|
+| **死锁检测** | [Deadlock](https://blog.fastthread.io/deadlock/) | Monitor 锁与 JUC 锁的环路依赖检测原理 |
+| **循环等待死锁** | [Circular Deadlock](https://blog.fastthread.io/circular-deadlock/) | A→B→C→A 型循环死锁模式的识别与分析 |
+| **Finalizer 陷阱** | [Leprechaun Trap](https://blog.fastthread.io/thread-dump-analysis-pattern-leprechaun-trap/) | Finalizer 线程卡在 finalize() 中导致 OOM 的检测模式 |
+| **异常线程检测** | [Throwing Exception](https://blog.fastthread.io/threads-throwing-exception/) | 通过栈帧中的 Exception/Error 构造方法识别异常线程 |
+| **RUNNABLE ≠ 运行中** | [Really Running](https://blog.fastthread.io/really-running/) | RUNNABLE 状态线程未必真正占用 CPU，需结合 top -H 交叉验证 |
+| **重复性劳损 (RSI)** | [RSI Pattern](https://blog.fastthread.io/thread-dump-analysis-pattern-repetitive-strain-injury-rsi/) | 大量线程卡在完全相同调用栈的模式识别 |
+
+> 💡 **推荐阅读顺序**：先了解 [Really Running](https://blog.fastthread.io/really-running/) 纠正常见误区，再阅读各检测模式文章深入理解分析原理。
 
 ---
 

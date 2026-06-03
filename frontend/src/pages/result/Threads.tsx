@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Card, Table, Tag, Typography, Empty, Popover, Modal, Input, message } from 'antd';
-import { SearchOutlined, BugOutlined, QuestionCircleOutlined, CopyOutlined } from '@ant-design/icons';
+import { Card, Table, Tag, Typography, Empty, Popover, Modal, Input, message, Tooltip } from 'antd';
+import { SearchOutlined, BugOutlined, QuestionCircleOutlined, CopyOutlined, ExclamationCircleOutlined, WarningOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import type { ThreadSummary } from '../../types';
@@ -415,31 +415,87 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
 
 // ========== 线程列表（原样保留） ==========
 
-const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
+const ThreadList: React.FC<{ threads: ThreadSummary[]; deadlockCount?: number }> = ({ threads, deadlockCount }) => {
   const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
+  const [filterType, setFilterType] = useState<null | 'deadlock' | 'finalizerTrap' | 'throwingException'>(null);
 
-  const filtered = searchText
-    ? threads.filter(
-        (t) =>
-          t.name.toLowerCase().includes(searchText.toLowerCase()) ||
-          t.state.toLowerCase().includes(searchText.toLowerCase()) ||
-          t.stackTrace.some((f) =>
-            f.toLowerCase().includes(searchText.toLowerCase())
-          )
-      )
+  const filtered = (searchText || filterType)
+    ? threads.filter((t) => {
+        if (filterType === 'deadlock' && !t.inDeadlock) return false;
+        if (filterType === 'finalizerTrap' && !t.finalizerTrapped) return false;
+        if (filterType === 'throwingException' && !t.throwingException) return false;
+        if (searchText) {
+          const q = searchText.toLowerCase();
+          return (
+            t.name.toLowerCase().includes(q) ||
+            t.state.toLowerCase().includes(q) ||
+            t.stackTrace.some((f) => f.toLowerCase().includes(q))
+          );
+        }
+        return true;
+      })
     : threads;
+
+  const detectionRefPopover = (
+    <Popover
+      content={
+        <div style={{ fontSize: 13, lineHeight: 2, maxWidth: 340 }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>{t('detectionRefTitle')}</div>
+          <div style={{ color: '#666', marginBottom: 10 }}>{t('detectionRefDesc')}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div>
+              <Tag color="red" style={{ fontSize: 12 }}>⚠ {t('deadlockTag')}</Tag>
+              <span style={{ color: '#666' }}>{t('detectionRefDeadlockDesc')}</span>
+              {' '}
+              <a href="https://blog.fastthread.io/" target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>{t('detectionRefLink')}</a>
+            </div>
+            <div>
+              <Tag color="orange" style={{ fontSize: 12 }}>⚠ {t('finalizerTrapTag')}</Tag>
+              <span style={{ color: '#666' }}>{t('detectionRefFinalizerDesc')}</span>
+              {' '}
+              <a href="https://blog.fastthread.io/thread-dump-analysis-pattern-leprechaun-trap/" target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>{t('detectionRefLink')}</a>
+            </div>
+            <div>
+              <Tag color="volcano" style={{ fontSize: 12 }}>⚠ {t('throwingExceptionTag')}</Tag>
+              <span style={{ color: '#666' }}>{t('detectionRefExceptionDesc')}</span>
+              {' '}
+              <a href="https://blog.fastthread.io/threads-throwing-exception/" target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>{t('detectionRefLink')}</a>
+            </div>
+          </div>
+        </div>
+      }
+      title={t('detectionRefPopoverTitle')}
+      placement="topLeft"
+    >
+      <QuestionCircleOutlined style={{ color: '#999', cursor: 'pointer', marginLeft: 4 }} />
+    </Popover>
+  );
 
   const columns: ColumnsType<ThreadSummary> = [
     {
-      title: t('threads.threadName'),
+      title: <span>{t('threads.threadName')}{detectionRefPopover}</span>,
       dataIndex: 'name',
       key: 'name',
       width: 280,
       ellipsis: true,
       render: (name: string, record) => (
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {record.inDeadlock && <BugOutlined style={{ color: '#ff4d4f' }} />}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {record.inDeadlock && (
+            <Tooltip title={t('deadlockTag')}>
+              <BugOutlined style={{ color: '#ff4d4f', fontSize: 14 }} />
+            </Tooltip>
+          )}
+          {record.finalizerTrapped && (
+            <Tooltip title={t('finalizerTrapTag')}>
+              <ExclamationCircleOutlined style={{ color: '#fa8c16', fontSize: 14 }} />
+            </Tooltip>
+          )}
+          {record.throwingException && (
+            <Tooltip title={t('throwingExceptionTag')}>
+              <WarningOutlined style={{ color: '#f5222d', fontSize: 14 }} />
+            </Tooltip>
+          )}
           <Text code style={{ fontSize: 13 }}>
             {name}
           </Text>
@@ -462,15 +518,21 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
       dataIndex: 'state',
       key: 'state',
       width: 140,
-      render: (state: string, record) => (
-        <Tag
-          color={record.inDeadlock ? '#ff4d4f' : (stateColorMap[state] || 'default')}
-          style={{ fontWeight: 600 }}
-        >
-          {state}
-          {record.inDeadlock && ' ⚠'}
-        </Tag>
-      ),
+      render: (state: string, record) => {
+        let tagColor = stateColorMap[state] || 'default';
+        if (record.inDeadlock) tagColor = '#ff4d4f';
+        else if (record.finalizerTrapped) tagColor = '#fa8c16';
+        else if (record.throwingException) tagColor = '#cf1322';
+
+        let suffix = '';
+        if (record.inDeadlock || record.finalizerTrapped || record.throwingException) suffix = ' ⚠';
+
+        return (
+          <Tag color={tagColor} style={{ fontWeight: 600 }}>
+            {state}{suffix}
+          </Tag>
+        );
+      },
       filters: Array.from(new Set(threads.map((t) => t.state))).map((s) => ({
         text: s,
         value: s,
@@ -513,17 +575,61 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <Popover
             content={
-              <div style={{ maxWidth: 380 }}>
-                <p style={{ margin: '0 0 8px' }}>{t('threads.threadListHelp')}</p>
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
+              <div style={{ maxWidth: 420, fontSize: 13, lineHeight: 2 }}>
+                <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>{t('threads.threadListHelp')}</div>
+                <ul style={{ margin: '0 0 12px', paddingLeft: 18, color: '#555' }}>
                   <li>{t('threads.threadListHelpSearch')}</li>
                   <li>{t('threads.threadListHelpFilter')}</li>
                   <li>{t('threads.threadListHelpExpand')}</li>
                   <li>{t('threads.threadListHelpPage')}</li>
                 </ul>
-                <p style={{ margin: '8px 0 0', color: '#999' }}>
-                  {t('threads.threadListHelpDeadlock')}
-                </p>
+
+                <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 13, paddingTop: 8, borderTop: '1px solid #f0f0f0' }}>
+                  {t('threads.threadListHelpFilterTag')}
+                </div>
+
+                <div style={{ marginBottom: 8, color: '#555', paddingLeft: 4 }}>
+                  <div style={{ marginBottom: 3 }}>{t('threads.threadListHelpDeadlock')}</div>
+                  <div style={{ marginBottom: 3 }}>{t('threads.threadListHelpFinalizerTrap')}</div>
+                  <div style={{ marginBottom: 3 }}>{t('threads.threadListHelpException')}</div>
+                </div>
+
+                <div style={{ marginBottom: 6, color: '#555', paddingLeft: 4 }}>
+                  {t('threads.threadListHelpIconMeaning')}
+                </div>
+
+                <div style={{ fontWeight: 600, marginTop: 10, marginBottom: 6, fontSize: 13, paddingTop: 8, borderTop: '1px solid #f0f0f0' }}>
+                  {t('threads.threadListHelpRefHeader')}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 4 }}>
+                  <div>
+                    <Tag color="red" style={{ fontSize: 11, margin: 0 }}>🐛 {t('deadlockTag')}</Tag>
+                    <span style={{ color: '#666', marginLeft: 6 }}>{t('threads.threadListHelpRefDeadlock')}</span>
+                  </div>
+                  <div>
+                    <a href="https://blog.fastthread.io/circular-deadlock/" target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#1890ff' }}>
+                      → blog.fastthread.io/circular-deadlock/
+                    </a>
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    <Tag color="orange" style={{ fontSize: 11, margin: 0 }}>⚠ {t('finalizerTrapTag')}</Tag>
+                    <span style={{ color: '#666', marginLeft: 6 }}>{t('threads.threadListHelpRefFinalizer')}</span>
+                  </div>
+                  <div>
+                    <a href="https://blog.fastthread.io/thread-dump-analysis-pattern-leprechaun-trap/" target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#1890ff' }}>
+                      → blog.fastthread.io/leprechaun-trap/
+                    </a>
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    <Tag color="volcano" style={{ fontSize: 11, margin: 0 }}>⚠ {t('throwingExceptionTag')}</Tag>
+                    <span style={{ color: '#666', marginLeft: 6 }}>{t('threads.threadListHelpRefException')}</span>
+                  </div>
+                  <div>
+                    <a href="https://blog.fastthread.io/threads-throwing-exception/" target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#1890ff' }}>
+                      → blog.fastthread.io/threads-throwing-exception/
+                    </a>
+                  </div>
+                </div>
               </div>
             }
             title={t('threads.threadListHelpTitle')} placement="topRight"
@@ -542,6 +648,73 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
         </div>
       }
     >
+      {/* 检测摘要 Tag 行 */}
+      {threads.some(t => t.inDeadlock || t.finalizerTrapped || t.throwingException) && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          {!filterType && (
+            <span style={{ fontSize: 12, color: '#999', display: 'flex', alignItems: 'center', gap: 2 }}>
+              <InfoCircleOutlined /> {t('threads.clickTagHint')}
+            </span>
+          )}
+          {threads.some(t => t.inDeadlock) && (
+            <Tooltip title={t('threads.deadlockDetectedTip')}>
+              <Tag
+                color={filterType === 'deadlock' ? 'red' : undefined}
+                style={{
+                  fontSize: 12, padding: '2px 10px', borderRadius: 10,
+                  cursor: 'pointer',
+                  border: filterType === 'deadlock' ? '2px solid #ff4d4f' : '1px solid #ffa39e',
+                  background: filterType === 'deadlock' ? '#ff4d4f' : '#fff1f0',
+                  color: filterType === 'deadlock' ? '#fff' : '#cf1322',
+                }}
+                onClick={() => setFilterType(prev => prev === 'deadlock' ? null : 'deadlock')}
+              >
+                <BugOutlined /> {t('result.deadlockCount', { count: deadlockCount ?? 0 })}
+              </Tag>
+            </Tooltip>
+          )}
+          {threads.some(t => t.finalizerTrapped) && (
+            <Tooltip title={t('threads.finalizerTrapDetectedTip')}>
+              <Tag
+                style={{
+                  fontSize: 12, padding: '2px 10px', borderRadius: 10,
+                  cursor: 'pointer',
+                  border: filterType === 'finalizerTrap' ? '2px solid #fa8c16' : '1px solid #ffd591',
+                  background: filterType === 'finalizerTrap' ? '#fa8c16' : '#fff7e6',
+                  color: filterType === 'finalizerTrap' ? '#fff' : '#ad2102',
+                }}
+                onClick={() => setFilterType(prev => prev === 'finalizerTrap' ? null : 'finalizerTrap')}
+              >
+                <ExclamationCircleOutlined /> {t('threads.finalizerTrapTagShort')}: {threads.filter(t => t.finalizerTrapped).length}
+              </Tag>
+            </Tooltip>
+          )}
+          {threads.some(t => t.throwingException) && (
+            <Tooltip title={t('threads.exceptionDetectedTip')}>
+              <Tag
+                style={{
+                  fontSize: 12, padding: '2px 10px', borderRadius: 10,
+                  cursor: 'pointer',
+                  border: filterType === 'throwingException' ? '2px solid #ff4d4f' : '1px solid #ffccc7',
+                  background: filterType === 'throwingException' ? '#ff4d4f' : '#fff1f0',
+                  color: filterType === 'throwingException' ? '#fff' : '#cf1322',
+                }}
+                onClick={() => setFilterType(prev => prev === 'throwingException' ? null : 'throwingException')}
+              >
+                <WarningOutlined /> {t('threads.exceptionTagShort')}: {threads.filter(t => t.throwingException).length}
+              </Tag>
+            </Tooltip>
+          )}
+          {filterType && (
+            <span
+              style={{ fontSize: 12, color: '#999', cursor: 'pointer', marginLeft: 4 }}
+              onClick={() => setFilterType(null)}
+            >
+              {t('threads.clearFilter')}
+            </span>
+          )}
+        </div>
+      )}
       <Table<ThreadSummary>
         dataSource={filtered}
         columns={columns}
@@ -598,9 +771,12 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
         locale={{
           emptyText: <Empty description={t('threads.noMatchingThreads')} />,
         }}
-        rowClassName={(record) =>
-          record.inDeadlock ? 'deadlock-row' : ''
-        }
+        rowClassName={(record) => {
+          if (record.inDeadlock) return 'deadlock-row';
+          if (record.finalizerTrapped) return 'finalizer-trap-row';
+          if (record.throwingException) return 'exception-row';
+          return '';
+        }}
       />
 
       <style>{`
@@ -609,6 +785,18 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
         }
         .deadlock-row:hover td {
           background: #ffe7e3 !important;
+        }
+        .finalizer-trap-row {
+          background: #fff7e6 !important;
+        }
+        .finalizer-trap-row:hover td {
+          background: #ffe7ba !important;
+        }
+        .exception-row {
+          background: #fff1f0 !important;
+        }
+        .exception-row:hover td {
+          background: #ffccc7 !important;
         }
       `}</style>
     </Card>
@@ -620,13 +808,14 @@ const ThreadList: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
 interface ThreadsProps {
   threads: ThreadSummary[];
   view?: 'list' | 'groups';
+  deadlockCount?: number;
 }
 
-const Threads: React.FC<ThreadsProps> = ({ threads, view = 'list' }) => {
+const Threads: React.FC<ThreadsProps> = ({ threads, view = 'list', deadlockCount }) => {
   return (
     <div>
       {view === 'groups' && <StackGroupAnalysis threads={threads} />}
-      {view === 'list' && <ThreadList threads={threads} />}
+      {view === 'list' && <ThreadList threads={threads} deadlockCount={deadlockCount} />}
     </div>
   );
 };

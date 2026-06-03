@@ -86,6 +86,18 @@ public class ThreadInfo {
     /** 是否为守护线程（daemon） */
     private boolean daemon;
 
+    /**
+     * 是否陷入 Finalizer Trap（Finalizer 线程卡在 finalize() 方法中）
+     * 由 {@link com.zeng.jstackinsight.service.analyzer.FinalizerTrapDetector} 设置
+     */
+    private boolean finalizerTrapped;
+
+    /**
+     * 是否正在抛出异常（栈帧中包含 Exception/Error 的 {@code <init>} 构造方法）
+     * 由 {@link com.zeng.jstackinsight.service.analyzer.ExceptionDetector} 设置
+     */
+    private boolean throwingException;
+
     // =================== Getter / Setter ===================
 
     public String getName() { return name; }
@@ -123,6 +135,12 @@ public class ThreadInfo {
 
     public boolean isDaemon() { return daemon; }
     public void setDaemon(boolean daemon) { this.daemon = daemon; }
+
+    public boolean isFinalizerTrapped() { return finalizerTrapped; }
+    public void setFinalizerTrapped(boolean finalizerTrapped) { this.finalizerTrapped = finalizerTrapped; }
+
+    public boolean isThrowingException() { return throwingException; }
+    public void setThrowingException(boolean throwingException) { this.throwingException = throwingException; }
 
     @Override
     public String toString() {

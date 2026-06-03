@@ -69,5 +69,15 @@ public class ThreadStateVO {
         private List<String> stackTrace;
         /** CPU 占用估算（来自 nid 与 top 命令映射，可选） */
         private Double cpuPercent;
+        /**
+         * 是否陷入 Finalizer Trap
+         *（Finalizer 线程卡在 finalize() 方法中，参考 fastthread.io Leprechaun Trap 模式）
+         */
+        private boolean finalizerTrapped;
+        /**
+         * 是否正在抛出异常
+         *（调用栈中包含 Exception/Error 的 {@code <init>} 构造方法，参考 fastthread.io Threads Throwing Exception 模式）
+         */
+        private boolean throwingException;
     }
 }

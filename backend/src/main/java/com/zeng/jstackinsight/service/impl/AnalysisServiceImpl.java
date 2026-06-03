@@ -3,6 +3,8 @@ package com.zeng.jstackinsight.service.impl;
 import com.zeng.jstackinsight.api.response.AnalysisResultVO;
 import com.zeng.jstackinsight.converter.AnalysisResultConverter;
 import com.zeng.jstackinsight.service.analyzer.DeadlockDetector;
+import com.zeng.jstackinsight.service.analyzer.ExceptionDetector;
+import com.zeng.jstackinsight.service.analyzer.FinalizerTrapDetector;
 import com.zeng.jstackinsight.service.parser.JStackParser;
 import com.zeng.jstackinsight.service.parser.model.JStackDump;
 import org.springframework.stereotype.Service;
@@ -23,13 +25,19 @@ public class AnalysisServiceImpl {
 
     private final JStackParser parser;
     private final DeadlockDetector deadlockDetector;
+    private final FinalizerTrapDetector finalizerTrapDetector;
+    private final ExceptionDetector exceptionDetector;
     private final AnalysisResultConverter converter;
 
     public AnalysisServiceImpl(JStackParser parser,
                                 DeadlockDetector deadlockDetector,
+                                FinalizerTrapDetector finalizerTrapDetector,
+                                ExceptionDetector exceptionDetector,
                                 AnalysisResultConverter converter) {
         this.parser = parser;
         this.deadlockDetector = deadlockDetector;
+        this.finalizerTrapDetector = finalizerTrapDetector;
+        this.exceptionDetector = exceptionDetector;
         this.converter = converter;
     }
 
@@ -59,10 +67,12 @@ public class AnalysisServiceImpl {
         // 1. FSM 解析
         JStackDump dump = parser.parse(content);
 
-        // 2. DFS 死锁检测
-        DeadlockDetector.DetectionResult detection = deadlockDetector.detect(dump.getThreads());
+        // 2. 各类检测
+        DeadlockDetector.DetectionResult deadlockResult = deadlockDetector.detect(dump.getThreads());
+        FinalizerTrapDetector.DetectionResult finalizerTrapResult = finalizerTrapDetector.detect(dump.getThreads());
+        ExceptionDetector.DetectionResult exceptionResult = exceptionDetector.detect(dump.getThreads());
 
         // 3. 转换 VO 并返回
-        return converter.convert(dump, detection);
+        return converter.convert(dump, deadlockResult, finalizerTrapResult, exceptionResult);
     }
 }

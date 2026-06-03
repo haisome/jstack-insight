@@ -19,6 +19,8 @@ export interface ThreadSummary {
   nid?: string;
   state: string;
   inDeadlock: boolean;
+  finalizerTrapped: boolean;
+  throwingException: boolean;
   waitingOnLock?: string;
   waitingType?: string;
   waitingOnLockClass?: string;

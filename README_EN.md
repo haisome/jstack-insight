@@ -13,7 +13,7 @@
 
 **JStack Insight** is a jstack thread dump analysis tool designed for Java developers and SREs. Upload a `jstack` output file and get multi-dimensional analysis including thread state distribution, lock contention graph, flame graph, and deadlock detection — all visualized to help you quickly pinpoint CPU spikes, thread deadlocks, and thread pool saturation in production.
 
-Inspired by [fastthread.io](https://fastthread.io), but focused on self-hosted deployment and enterprise integration.
+Inspired by [fastthread.io](https://fastthread.io).
 
 ---
 
@@ -170,6 +170,23 @@ spring:
 
 [![GitHub](https://img.shields.io/badge/GitHub-haisome%2Fjstack--insight-181717?style=flat-square&logo=github)](https://github.com/haisome/jstack-insight)
 [![Gitee](https://img.shields.io/badge/Gitee-Z--HaiSome%2Fjstack--insight-c71d23?style=flat-square&logo=gitee)](https://gitee.com/Z-HaiSome/jstack-insight)
+
+---
+
+## Reference Resources
+
+The thread detection and analysis patterns in this project are referenced from the [fastthread.io](https://fastthread.io) professional blog. Below are the core reference articles:
+
+| Topic | Link | Description |
+|-------|------|-------------|
+| **Deadlock Detection** | [Deadlock](https://blog.fastthread.io/deadlock/) | Cycle detection for Monitor locks and JUC locks |
+| **Circular Deadlock** | [Circular Deadlock](https://blog.fastthread.io/circular-deadlock/) | A→B→C→A cycle pattern identification and analysis |
+| **Finalizer Trap** | [Leprechaun Trap](https://blog.fastthread.io/thread-dump-analysis-pattern-leprechaun-trap/) | Finalizer thread stuck in finalize() leading to OOM |
+| **Exception Thread** | [Throwing Exception](https://blog.fastthread.io/threads-throwing-exception/) | Identifying exception threads via Exception/Error constructors in stack frames |
+| **RUNNABLE ≠ Running** | [Really Running](https://blog.fastthread.io/really-running/) | RUNNABLE state does not mean actually consuming CPU; cross-validate with `top -H` |
+| **Repetitive Strain Injury (RSI)** | [RSI Pattern](https://blog.fastthread.io/thread-dump-analysis-pattern-repetitive-strain-injury-rsi/) | Pattern recognition: many threads stuck at identical call stacks |
+
+> 💡 **Suggested reading order**: Start with [Really Running](https://blog.fastthread.io/really-running/) to correct common misconceptions, then read each detection pattern article for deeper understanding.
 
 ---
 

@@ -332,27 +332,12 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
             />
           </Space>
           <Space size={8}>
-            <LanguageSwitcher mode="dropdown" size="small" />
-            {(deadlockChain.detected || lockGraph.hasDeadlock) && (
-              <div
-                style={{
-                  width: 1,
-                  height: 14,
-                  background: '#e8e8e8',
-                  display: 'inline-block',
-                }}
-              />
-            )}
             {deadlockChain.detected && (
               <Tag color="red" style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, fontWeight: 500 }}>
                 <BugOutlined /> {t('result.deadlockCount', { count: deadlockChain.chains.length })}
               </Tag>
             )}
-            {lockGraph.hasDeadlock && (
-              <Tag color="orange" style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, fontWeight: 500 }}>
-                {t('result.hasLockCompetition')}
-              </Tag>
-            )}
+            <LanguageSwitcher mode="dropdown" size="small" />
           </Space>
         </div>
 
@@ -370,10 +355,10 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
             <Overview threadState={threadState} />
           </div>
           <div style={panelStyle('thread-list')}>
-            <Threads threads={threadState.threads} view="list" />
+            <Threads threads={threadState.threads} view="list" deadlockCount={deadlockChain.detected ? deadlockChain.chains.length : 0} />
           </div>
           <div style={panelStyle('thread-groups')}>
-            <Threads threads={threadState.threads} view="groups" />
+            <Threads threads={threadState.threads} view="groups" deadlockCount={deadlockChain.detected ? deadlockChain.chains.length : 0} />
           </div>
           <div style={panelStyle('thread-group')}>
             <ThreadGroups threadState={threadState} />

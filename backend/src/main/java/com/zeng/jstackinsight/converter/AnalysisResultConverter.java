@@ -2,6 +2,8 @@ package com.zeng.jstackinsight.converter;
 
 import com.zeng.jstackinsight.api.response.*;
 import com.zeng.jstackinsight.service.analyzer.DeadlockDetector;
+import com.zeng.jstackinsight.service.analyzer.ExceptionDetector;
+import com.zeng.jstackinsight.service.analyzer.FinalizerTrapDetector;
 import com.zeng.jstackinsight.service.analyzer.HotspotAnalyzer;
 import com.zeng.jstackinsight.service.parser.model.JStackDump;
 import com.zeng.jstackinsight.service.parser.model.ThreadInfo;
@@ -32,18 +34,23 @@ public class AnalysisResultConverter {
     /**
      * 组装完整的分析结果 VO。
      *
-     * @param dump             解析结果
-     * @param detectionResult  死锁检测结果
+     * @param dump                 解析结果
+     * @param deadlockResult      死锁检测结果
+     * @param finalizerTrapResult Finalizer Trap 检测结果
+     * @param exceptionResult     异常线程检测结果
      * @return 完整的 AnalysisResultVO
      */
-    public AnalysisResultVO convert(JStackDump dump, DeadlockDetector.DetectionResult detectionResult) {
+    public AnalysisResultVO convert(JStackDump dump,
+                                    DeadlockDetector.DetectionResult deadlockResult,
+                                    FinalizerTrapDetector.DetectionResult finalizerTrapResult,
+                                    ExceptionDetector.DetectionResult exceptionResult) {
         List<ThreadInfo> threads = dump.getThreads();
 
         return AnalysisResultVO.builder()
-                .threadState(buildThreadStateVO(threads, detectionResult))
-                .lockGraph(buildLockGraphVO(threads, detectionResult))
+                .threadState(buildThreadStateVO(threads, deadlockResult, finalizerTrapResult, exceptionResult))
+                .lockGraph(buildLockGraphVO(threads, deadlockResult))
                 .flameGraph(hotspotAnalyzer.buildFlameGraph(threads))
-                .deadlockChain(buildDeadlockChainVO(detectionResult))
+                .deadlockChain(buildDeadlockChainVO(deadlockResult))
                 .build();
     }
 
@@ -52,7 +59,9 @@ public class AnalysisResultConverter {
     // ================================================================
 
     private ThreadStateVO buildThreadStateVO(List<ThreadInfo> threads,
-                                              DeadlockDetector.DetectionResult result) {
+                                              DeadlockDetector.DetectionResult deadlockResult,
+                                              FinalizerTrapDetector.DetectionResult finalizerTrapResult,
+                                              ExceptionDetector.DetectionResult exceptionResult) {
         // 统计各状态数量
         Map<String, Integer> stateCounts = new LinkedHashMap<>();
         for (ThreadInfo t : threads) {
@@ -61,15 +70,21 @@ public class AnalysisResultConverter {
         }
 
         // 统计死锁线程数
-        int deadlockCount = result.getDeadlockThreads().size();
+        int deadlockCount = deadlockResult.getDeadlockThreads().size();
 
         // 构建线程摘要列表
+        Set<String> finalizerTrappedNames = finalizerTrapResult.getTrappedThreadNames();
+        Set<String> exceptionThreadNames = exceptionResult.getExceptionThreadNames();
+
         List<ThreadStateVO.ThreadSummary> summaries = threads.stream()
                 .map(t -> ThreadStateVO.ThreadSummary.builder()
                         .name(t.getName())
+                        .tid(t.getNumber())  // 注意：ThreadInfo.number 是 #N，tid 是十六进制 JVM 内部 ID
                         .nid(t.getNid())
                         .state(t.getState())
-                        .inDeadlock(result.getDeadlockThreads().contains(t.getName()))
+                        .inDeadlock(deadlockResult.getDeadlockThreads().contains(t.getName()))
+                        .finalizerTrapped(finalizerTrappedNames.contains(t.getName()))
+                        .throwingException(exceptionThreadNames.contains(t.getName()))
                         .waitingOnLock(t.getWaitingOnLock())
                         .waitingType(t.getWaitingType())
                         .waitingOnLockClass(t.getWaitingOnLockClass())
