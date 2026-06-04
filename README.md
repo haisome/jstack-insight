@@ -190,6 +190,36 @@ spring:
 
 ---
 
+## 功能预览
+
+<details>
+<summary>📸 点击展开功能截图</summary>
+
+### 概览
+![概览](docs/screenshots/cn/01-overview.png)
+
+### 线程列表
+![线程列表](docs/screenshots/cn/02-threads.png)
+
+### 锁竞争图
+![锁竞争图](docs/screenshots/cn/03-lock-graph.png)
+
+### 死锁检测
+![死锁检测](docs/screenshots/cn/04-deadlock.png)
+
+### 火焰图
+![火焰图](docs/screenshots/cn/05-flamegraph.png)
+
+### CPU 推测
+![CPU 推测](docs/screenshots/cn/06-cpu-inference.png)
+
+### 精准 CPU 采集
+![精准 CPU 采集](docs/screenshots/cn/07-cpu-precise.png)
+
+</details>
+
+---
+
 ## 许可
 
 MIT License

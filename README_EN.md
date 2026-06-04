@@ -190,6 +190,36 @@ The thread detection and analysis patterns in this project are referenced from t
 
 ---
 
+## Screenshots
+
+<details>
+<summary>📸 Click to view screenshots</summary>
+
+### Overview
+![Overview](docs/screenshots/en/01-overview.png)
+
+### Thread List
+![Thread List](docs/screenshots/en/02-threads.png)
+
+### Lock Contention Graph
+![Lock Contention Graph](docs/screenshots/en/03-lock-graph.png)
+
+### Deadlock Detection
+![Deadlock Detection](docs/screenshots/en/04-deadlock.png)
+
+### Flame Graph
+![Flame Graph](docs/screenshots/en/05-flamegraph.png)
+
+### CPU Inference
+![CPU Inference](docs/screenshots/en/06-cpu-inference.png)
+
+### Precise CPU Collection
+![Precise CPU Collection](docs/screenshots/en/07-cpu-precise.png)
+
+</details>
+
+---
+
 ## License
 
 MIT License
