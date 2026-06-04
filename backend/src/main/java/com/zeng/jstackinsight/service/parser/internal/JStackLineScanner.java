@@ -279,18 +279,22 @@ public class JStackLineScanner {
         info.setDaemon(line.contains(" daemon "));
 
         // 用正则提取 #编号、tid、nid
+        // 注意：正则必须匹配才能认为是合法线程头，
+        // 否则会误把 jstack 死锁段的 "Thread-X": 行当作线程解析
         Matcher m = THREAD_HEADER_PATTERN.matcher(line);
-        if (m.find()) {
-            if (StringUtils.hasText(m.group(3))) {
-                try { info.setNumber(Integer.parseInt(m.group(3))); } catch (NumberFormatException ignored) {}
-            }
-            if (StringUtils.hasText(m.group(5))) {
-                try { info.setPriority(Integer.parseInt(m.group(5))); } catch (NumberFormatException ignored) {}
-            }
-            info.setTid(m.group(6));
-            info.setNid(m.group(7));
+        if (!m.find()) {
+            return null;
         }
+        if (StringUtils.hasText(m.group(3))) {
+            try { info.setNumber(Integer.parseInt(m.group(3))); } catch (NumberFormatException ignored) {}
+        }
+        if (StringUtils.hasText(m.group(5))) {
+            try { info.setPriority(Integer.parseInt(m.group(5))); } catch (NumberFormatException ignored) {}
+        }
+        info.setTid(m.group(6));
+        info.setNid(m.group(7));
 
+        // 线程名可能被正则中 (#\d+) 的 # 误伤（如 "Thread#1"），这里用双引号截取为准，不覆盖
         return info;
     }
 
