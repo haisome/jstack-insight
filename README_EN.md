@@ -113,9 +113,9 @@ Open http://localhost:3000 and upload `sample_jstack.txt` to try it out.
 ### Production Build
 
 ```bash
-# Build frontend and copy to backend static directory
+# Build frontend (outputs directly to backend static directory)
 cd frontend
-npm run build:prod
+npm run build
 
 # Package backend
 cd backend

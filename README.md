@@ -113,9 +113,9 @@ npm start
 ### 生产构建
 
 ```bash
-# 构建前端并复制到后端 static 目录
+# 构建前端（直接输出到后端 static 目录）
 cd frontend
-npm run build:prod
+npm run build
 
 # 打包后端
 cd backend

@@ -23,7 +23,7 @@ public class JstackInsightApplication {
         SpringApplication.run(JstackInsightApplication.class, args);
         System.out.println("==============================================");
         System.out.println("  JStack Insight 已启动！");
-        System.out.println("  首页地址(需前端build:prod): http://localhost:9595/index.html");
+        System.out.println("  首页地址(需前端build): http://localhost:9595/index.html");
         System.out.println("==============================================");
     }
 }
