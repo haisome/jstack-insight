@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Button, Space, Typography, Tag, Breadcrumb } from 'antd';
+import { Layout, Menu, Button, Space, Typography, Tag, Breadcrumb, Popover } from 'antd';
 import type { UploadFile } from 'antd';
 import {
   HomeOutlined,
@@ -14,6 +14,7 @@ import {
   CopyOutlined,
   BulbOutlined,
   AimOutlined,
+  CoffeeOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
@@ -259,7 +260,8 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
         }}
         theme="light"
       >
-        {/* Logo / 标题 */}
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {/* Logo / 标题 */}
         <div
           style={{
             padding: collapsed ? '16px 0 14px' : '16px 20px 14px',
@@ -285,8 +287,48 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
           selectedKeys={[activeTab]}
           onClick={handleMenuClick}
           items={menuItems}
-          style={{ borderRight: 0 }}
+          style={{ borderRight: 0, flex: 1 }}
         />
+
+        {/* 打赏入口 */}
+        <Popover
+          placement="rightBottom"
+          title={t('result.tipTitle')}
+          content={
+            <div style={{ textAlign: 'center' }}>
+              <img
+                src="/wechat-donate.jpg"
+                alt="赞赏码"
+                style={{ width: 180, height: 'auto', borderRadius: 8, marginBottom: 8 }}
+              />
+              <div style={{ fontSize: 13, color: '#666' }}>{t('result.tipDesc')}</div>
+              <div style={{ fontSize: 12, color: '#999', marginTop: 6, padding: '4px 8px', background: '#fff7e6', borderRadius: 4 }}>
+                {t('result.tipNotice')}
+              </div>
+            </div>
+          }
+        >
+          <div
+            style={{
+              padding: '12px 0',
+              borderTop: '1px solid #f0f0f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              cursor: 'pointer',
+              color: '#999',
+              fontSize: 13,
+              transition: 'color 0.2s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = '#1677ff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = '#999'; }}
+          >
+            <CoffeeOutlined style={{ fontSize: 16 }} />
+            {!collapsed && <span>{t('result.tipButton')}</span>}
+          </div>
+        </Popover>
+        </div>
       </Sider>
 
       {/* 右侧内容区 */}

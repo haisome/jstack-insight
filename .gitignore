@@ -8,6 +8,7 @@
 .idea/
 .vscode/
 .chatcode/
+.workbuddy/
 *.iml
 *.iws
 *.ipr

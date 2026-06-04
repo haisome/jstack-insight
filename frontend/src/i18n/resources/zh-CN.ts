@@ -77,6 +77,10 @@ export const zhCN = {
     menuCpuAnalysis: 'CPU 分析',
     menuCpuInference: 'CPU 线程推测',
     menuCpuPrecise: '精准 CPU 采集',
+    tipTitle: '感谢您的支持',
+    tipDesc: '如果本工具帮到了您，欢迎微信扫码支持 ~',
+    tipNotice: '本软件永久免费，赞赏仅代表个人谢意，与付费无关',
+    tipButton: '赞赏',
   },
 
   overview: {

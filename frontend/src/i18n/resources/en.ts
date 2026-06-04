@@ -77,6 +77,10 @@ export const en = {
     menuCpuAnalysis: 'CPU Analysis',
     menuCpuInference: 'CPU Thread Inference',
     menuCpuPrecise: 'Precise CPU Collection',
+    tipTitle: 'Thank You for Your Support',
+    tipDesc: 'If this tool helped you, feel free to support via WeChat ~',
+    tipNotice: 'This software is free forever. Tips are voluntary and not payment for the software.',
+    tipButton: 'Donate',
   },
 
   overview: {
