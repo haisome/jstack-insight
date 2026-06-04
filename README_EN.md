@@ -222,4 +222,6 @@ The thread detection and analysis patterns in this project are referenced from t
 
 ## License
 
-MIT License
+This project is open-sourced under the [Apache License 2.0](LICENSE).
+
+> ⚠️ Please read the [Additional Disclaimer and Usage Notice](DISCLAIMER.md) before using this software for important information regarding patents, privacy, promotion restrictions, and the "AS IS" provision.

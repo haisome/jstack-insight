@@ -222,4 +222,6 @@ spring:
 
 ## 许可
 
-MIT License
+本项目基于 [Apache License 2.0](LICENSE) 开源。
+
+> ⚠️ 使用前请务必阅读 [附加免责与使用声明](DISCLAIMER.md)，了解关于专利、隐私、推广限制及"按原样"提供的法律条款。
