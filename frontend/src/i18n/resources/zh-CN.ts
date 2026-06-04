@@ -39,9 +39,9 @@ export const zhCN = {
 
   upload: {
     title: 'JStack Insight',
-    subtitle: '一键上传 JStack 线程转储，快速定位死锁、锁竞争与性能瓶颈',
-    features: '支撑多种分析模式：线程组、锁竞争图、死锁检测、火焰图、CPU线程推测',
-    draggerText: '点击或拖拽 jstack 文件到此处',
+    subtitle: '上传 JStack 线程转储，快速定位死锁、锁竞争与性能瓶颈',
+    features: '支持线程组、锁竞争图、死锁检测、火焰图、CPU 推测多种模式',
+    draggerText: '点击或拖拽 JStack 文件到此处',
     draggerHint: '仅支持 .txt 格式，文件大小 ≤ 50MB',
     analyzeButton: '开始分析',
     analyzing: '分析中，请稍候...',

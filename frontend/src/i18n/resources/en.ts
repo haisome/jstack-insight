@@ -39,9 +39,9 @@ export const en = {
 
   upload: {
     title: 'JStack Insight',
-    subtitle: 'Upload JStack thread dump with one click, quickly locate deadlocks, lock contention and performance bottlenecks',
-    features: 'Support multiple analysis modes: thread groups, lock contention graph, deadlock detection, flame graph, CPU thread inference',
-    draggerText: 'Click or drag jstack file to this area',
+    subtitle: 'Upload JStack thread dump, quickly locate deadlocks, lock contention and performance bottlenecks',
+    features: 'Support multiple analysis modes: thread groups, lock contention graph, deadlock detection, flame graph, CPU inference, etc',
+    draggerText: 'Click or drag JStack file to this area',
     draggerHint: 'Only .txt format, file size ≤ 50MB',
     analyzeButton: 'Start Analysis',
     analyzing: 'Analyzing, please wait...',
