@@ -8,8 +8,18 @@ spring:
     name: jstack-insight
   servlet:
     multipart:
-      max-file-size: 50MB
-      max-request-size: 50MB
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+# JStack Insight 自定义配置
+jstack-insight:
+  report:
+    # 报告存储目录（相对于项目根目录）
+    dir: jstackInsightData/reports
+    # 报告默认有效期（小时）
+    expire-hours: 24
+    # 分享后延长至（小时）
+    extend-hours: 48
 
 # SpringDoc / Swagger UI 配置
 springdoc:
@@ -18,7 +28,4 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
     tags-sorter: alpha
-
-logging:
-  level:
-    com.zeng.jstackinsight: DEBUG
+    UPLOAD_AUDIT: INFO

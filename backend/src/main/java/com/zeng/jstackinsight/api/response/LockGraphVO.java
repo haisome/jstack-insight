@@ -1,7 +1,9 @@
 package com.zeng.jstackinsight.api.response;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 
@@ -32,6 +34,8 @@ import java.util.List;
  */
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class LockGraphVO {
 
     /** 图中所有节点（线程节点 + 锁节点） */
@@ -55,6 +59,8 @@ public class LockGraphVO {
      */
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class GraphNode {
         /** 唯一 ID，线程节点用 tid，锁节点用 lockAddress */
         private String id;
@@ -79,6 +85,8 @@ public class LockGraphVO {
      */
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class GraphEdge {
         /** 起点节点 ID */
         private String source;

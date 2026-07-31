@@ -1,7 +1,9 @@
 package com.zeng.jstackinsight.api.response;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 import java.util.Map;
@@ -25,6 +27,8 @@ import java.util.Map;
  */
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ThreadStateVO {
 
     /** 线程总数 */
@@ -44,6 +48,8 @@ public class ThreadStateVO {
      */
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class ThreadSummary {
         /** 线程名称，如 "main"、"pool-1-thread-1" */
         private String name;

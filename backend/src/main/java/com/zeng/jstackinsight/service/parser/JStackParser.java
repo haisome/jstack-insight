@@ -4,6 +4,10 @@ import com.zeng.jstackinsight.service.parser.internal.JStackLineScanner;
 import com.zeng.jstackinsight.service.parser.model.JStackDump;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+
 /**
  * jstack 解析器门面（Facade）
  *
@@ -31,5 +35,28 @@ public class JStackParser {
             throw new IllegalArgumentException("jstack 内容不能为空");
         }
         return scanner.parse(content);
+    }
+
+    /**
+     * 流式解析 jstack 输出文本（从 InputStream 逐行读取）。
+     * <p>适合大文件和压缩流场景，内存占用恒定。
+     *
+     * @param inputStream jstack 文本输入流（UTF-8 编码）
+     * @return 结构化的线程转储对象
+     * @throws IOException 若读取失败
+     */
+    public JStackDump parse(InputStream inputStream) throws IOException {
+        return scanner.parseStream(inputStream);
+    }
+
+    /**
+     * 流式解析 jstack 输出文本（从 BufferedReader 逐行读取）。
+     *
+     * @param reader jstack 文本的 BufferedReader
+     * @return 结构化的线程转储对象
+     * @throws IOException 若读取失败
+     */
+    public JStackDump parse(BufferedReader reader) throws IOException {
+        return scanner.parseStream(reader);
     }
 }

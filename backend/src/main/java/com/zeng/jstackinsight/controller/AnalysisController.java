@@ -5,6 +5,7 @@ import com.zeng.jstackinsight.api.response.Result;
 import com.zeng.jstackinsight.api.response.ThreadStateVO;
 import com.zeng.jstackinsight.api.response.TopCpuVO;
 import com.zeng.jstackinsight.service.impl.AnalysisServiceImpl;
+import com.zeng.jstackinsight.service.impl.ReportService;
 import com.zeng.jstackinsight.service.parser.TopFileParser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -13,11 +14,8 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * jstack 分析接口
@@ -35,43 +33,45 @@ public class AnalysisController {
 
     private final AnalysisServiceImpl analysisService;
     private final TopFileParser topFileParser;
+    private final ReportService reportService;
 
     public AnalysisController(AnalysisServiceImpl analysisService,
-                              TopFileParser topFileParser) {
+                              TopFileParser topFileParser,
+                              ReportService reportService) {
         this.analysisService = analysisService;
         this.topFileParser = topFileParser;
+        this.reportService = reportService;
     }
 
     /**
-     * 上传并分析 jstack 文件。
+     * 上传并分析 jstack 文件，返回报告 UUID 和摘要。
      *
-     * <p>接受 multipart/form-data 形式上传的 .txt 文件，
-     * 返回包含线程状态、锁图、火焰图、死锁链路的完整分析结果。
+     * <p>分析结果持久化到文件系统，前端通过 {@code /api/v1/report/{uuid}/*} 按需加载。
      *
-     * @param file 上传的 jstack .txt 文件（最大 50MB）
-     * @return 分析结果
+     * @param file 上传的 jstack 文件（.txt，最大 10MB）
+     * @return 报告 UUID 和摘要
      */
     @Operation(
             summary = "上传并分析 jstack 文件",
-            description = "上传 jstack 输出的 .txt 文件，返回线程状态分布、锁竞争图、火焰图和死锁检测结果"
+            description = "上传 jstack 文件（.txt），分析并持久化，返回报告 UUID"
     )
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public Result<AnalysisResultVO> upload(
-            @Parameter(description = "jstack 输出的 .txt 文件", required = true)
+    public Result<ReportService.ReportSummaryVO> upload(
+            @Parameter(description = "jstack 输出文件（.txt）", required = true)
             @RequestParam("file") MultipartFile file) {
 
-        // 基础校验
         if (file == null || file.isEmpty()) {
             return Result.fail(400, "文件不能为空");
         }
         String filename = file.getOriginalFilename();
-        if (filename != null && !filename.endsWith(".txt")) {
-            return Result.fail(400, "仅支持 .txt 格式的 jstack 文件");
+        if (filename == null) {
+            return Result.fail(400, "文件名不能为空");
         }
 
         try {
             AnalysisResultVO result = analysisService.analyze(file);
-            return Result.ok(result);
+            String uuid = reportService.saveReport(result, filename);
+            return Result.ok(reportService.getSummary(uuid));
         } catch (IllegalArgumentException e) {
             return Result.fail(400, "文件解析失败：" + e.getMessage());
         } catch (Exception e) {
@@ -80,105 +80,103 @@ public class AnalysisController {
     }
 
     /**
-     * 上传 top -H 文件并与已有的 jstack 分析结果进行 CPU 关联。
+     * 通过报告 UUID 上传 top 文件进行精准 CPU 关联。
      *
-     * <p>需要同时上传 jstack 文件和 top -H 文件。
-     * 核心关联逻辑：top -H 的 PID（十进制）= jstack 的 nid（十六进制）。
-     * 例如：top 中 PID=12345，转换为十六进制 0x3039，在 jstack 中搜索 nid=0x3039。
+     * <p>不需要重新上传 jstack，直接从已存储的报告摘要中读取 nid 列表进行关联。
+     * 匹配到的线程会加载其完整详情（含栈帧）。
      *
-     * @param jstackFile jstack 输出文件
-     * @param topFile    top -H -p pid -n 1 -b 输出文件
-     * @return 精确 CPU 分析结果
+     * @param uuid    报告 UUID
+     * @param topFile top -H -p pid -n 1 -b 输出文件
      */
-    @Operation(
-            summary = "上传 top 文件关联 CPU 分析",
-            description = "同时上传 jstack 和 top -H 文件，通过 PID(十进制) 与 nid(十六进制) 关联，返回精确的线程 CPU 占用率"
-    )
-    @PostMapping(value = "/top-cpu", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public Result<TopCpuVO> topCpu(
-            @Parameter(description = "jstack 输出的 .txt 文件", required = true)
-            @RequestParam("jstackFile") MultipartFile jstackFile,
-            @Parameter(description = "top -H -p pid 输出的 .txt 文件", required = true)
+    @Operation(summary = "基于报告 UUID 的 top 文件 CPU 关联",
+            description = "上传 top -H 文件，与指定报告中已解析的线程 nid 关联，返回精准 CPU 占用率")
+    @PostMapping(value = "/top-cpu-with-report/{uuid}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<TopCpuVO> topCpuWithReport(
+            @Parameter(description = "报告 UUID") @PathVariable String uuid,
+            @Parameter(description = "top -H -p pid 输出的文件", required = true)
             @RequestParam("topFile") MultipartFile topFile) {
 
-        if (jstackFile == null || jstackFile.isEmpty()) {
-            return Result.fail(400, "jstack 文件不能为空");
-        }
         if (topFile == null || topFile.isEmpty()) {
             return Result.fail(400, "top 文件不能为空");
         }
 
         try {
-            // 1. 解析 jstack
-            String jstackContent = new String(jstackFile.getBytes(), StandardCharsets.UTF_8);
-            AnalysisResultVO analysisResult = analysisService.analyze(jstackContent);
+            // 1. 从报告摘要获取所有线程的 nid
+            ThreadStateVO threadSummary = reportService.getThreadStateSummary(uuid);
+            List<ThreadStateVO.ThreadSummary> threads = threadSummary.getThreads();
+
+            // 构建 nid 集合用于关联
+            Set<String> nidSet = new HashSet<>();
+            Map<String, ThreadStateVO.ThreadSummary> nidToThread = new LinkedHashMap<>();
+            for (ThreadStateVO.ThreadSummary ts : threads) {
+                if (ts.getNid() != null && !ts.getNid().isEmpty()) {
+                    String norm = ts.getNid().toLowerCase().replace("0x", "");
+                    nidSet.add(norm);
+                    nidToThread.put(norm, ts);
+                }
+            }
 
             // 2. 解析 top
             String topContent = new String(topFile.getBytes(), StandardCharsets.UTF_8);
             Map<Integer, Double> topCpuMap = topFileParser.parse(topContent);
-
             if (topCpuMap.isEmpty()) {
                 return Result.fail(400, "top 文件解析失败：未找到有效的线程数据行");
             }
 
-            // 3. 重新解析 jstack 获取 ThreadInfo 列表（用于 nid 关联）
-            List<com.zeng.jstackinsight.service.parser.model.ThreadInfo> jstackThreads =
-                    analysisService.getParser().parse(jstackContent).getThreads();
-            Map<String, Double> cpuByNid = topFileParser.correlate(topCpuMap, jstackThreads);
+            // 3. 关联
+            Map<String, Double> cpuByNid = topFileParser.correlateByNid(topCpuMap, nidSet);
 
-            // 4. 组装 TopCpuVO
+            // 4. 加载完整线程详情以获取栈帧
+            Map<Long, ThreadStateVO.ThreadSummary> tidMap = new LinkedHashMap<>();
+            for (ThreadStateVO.ThreadSummary detail : reportService.getAllThreadDetails(uuid)) {
+                tidMap.put(detail.getTid(), detail);
+            }
+
             double totalCpu = 0;
             int matchedCount = 0;
             int unmatchedCount = topCpuMap.size() - cpuByNid.size();
             List<TopCpuVO.ThreadCpuInfo> threadCpuInfos = new ArrayList<>();
 
-            for (ThreadStateVO.ThreadSummary threadSummary : analysisResult.getThreadState().getThreads()) {
-                String nid = threadSummary.getNid();
-                if (nid == null || nid.isEmpty()) continue;
+            for (Map.Entry<String, Double> entry : cpuByNid.entrySet()) {
+                String nid = entry.getKey();
+                Double cpu = entry.getValue();
+                ThreadStateVO.ThreadSummary ts = nidToThread.get(nid);
+                if (ts == null) continue;
 
-                Double cpu = cpuByNid.get(nid.toLowerCase().replace("0x", ""));
-                if (cpu != null) {
-                    matchedCount++;
-                    totalCpu += cpu;
-                    threadCpuInfos.add(TopCpuVO.ThreadCpuInfo.builder()
-                            .name(threadSummary.getName())
-                            .pid(Integer.parseInt(nid.startsWith("0x") ? nid.substring(2) : nid, 16))
-                            .nid(nid)
-                            .cpuPercent(cpu)
-                            .state(threadSummary.getState())
-                            .topFrame(threadSummary.getStackTrace() != null && !threadSummary.getStackTrace().isEmpty()
-                                    ? threadSummary.getStackTrace().get(0) : "")
-                            .inDeadlock(threadSummary.isInDeadlock())
-                            .build());
+                matchedCount++;
+                totalCpu += cpu;
+
+                String topFrame = "";
+                ThreadStateVO.ThreadSummary detail = tidMap.get(ts.getTid());
+                if (detail != null && detail.getStackTrace() != null && !detail.getStackTrace().isEmpty()) {
+                    topFrame = detail.getStackTrace().get(0);
                 }
+
+                int pid = 0;
+                try { pid = Integer.parseInt(nid, 16); } catch (NumberFormatException ignored) {}
+
+                threadCpuInfos.add(TopCpuVO.ThreadCpuInfo.builder()
+                        .name(ts.getName()).pid(pid).nid(ts.getNid())
+                        .cpuPercent(cpu).state(ts.getState())
+                        .topFrame(topFrame).inDeadlock(ts.isInDeadlock())
+                        .build());
             }
 
-            // 按 CPU% 降序排序
             threadCpuInfos.sort((a, b) -> Double.compare(b.getCpuPercent(), a.getCpuPercent()));
-
-            // 四舍五入
             totalCpu = Math.round(totalCpu * 10.0) / 10.0;
 
-            TopCpuVO result = TopCpuVO.builder()
+            return Result.ok(TopCpuVO.builder()
                     .totalThreads(topCpuMap.size())
                     .totalCpuPercent(totalCpu)
                     .matchedCount(matchedCount)
                     .unmatchedCount(unmatchedCount)
                     .threads(threadCpuInfos)
-                    .build();
+                    .build());
 
-            return Result.ok(result);
-
-        } catch (IllegalArgumentException e) {
-            return Result.fail(400, "解析失败：" + e.getMessage());
         } catch (Exception e) {
             return Result.fail(500, "服务器内部错误：" + e.getMessage());
         }
     }
-
-    /**
-     * 健康检查接口
-     */
     @Operation(summary = "健康检查")
     @GetMapping("/health")
     public Result<String> health() {

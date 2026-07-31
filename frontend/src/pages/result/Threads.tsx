@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from 'react';
-import { Card, Table, Tag, Typography, Empty, Popover, Modal, Input, message, Tooltip } from 'antd';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Card, Table, Tag, Typography, Empty, Popover, Modal, Input, message, Tooltip, Spin } from 'antd';
 import { SearchOutlined, BugOutlined, QuestionCircleOutlined, CopyOutlined, ExclamationCircleOutlined, WarningOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
-import type { ThreadSummary } from '../../types';
+import type { ThreadSummary, StackGroupVO } from '../../types';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -15,6 +15,7 @@ interface StackGroup {
   count: number;          // 该组线程数
   sampleThread: ThreadSummary;
   allThreads: ThreadSummary[];
+  allThreadNames: string[];
   firstFrame: string;     // 第一帧（代表栈帧）
   secondFrame: string;    // 第二帧（如有）
   states: Record<string, number>; // 状态分布
@@ -43,6 +44,7 @@ const stateColorMap: Record<string, string> = {
  */
 function buildRawStackLines(thread: ThreadSummary): string[] {
   const lines: string[] = [];
+  if (!thread.stackTrace) return lines;
   // waitingOnLock 通常出现在第一个 at 帧之后
   const hasWaitingLock = !!thread.waitingOnLock;
   let waitingInserted = false;
@@ -126,16 +128,26 @@ const LockInfoSection: React.FC<{ thread: ThreadSummary }> = ({ thread }) => {
 /**
  * 相同堆栈分析卡片
  */
-const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads }) => {
+const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[]; stackGroups?: StackGroupVO[] | null }> = ({ threads, stackGroups }) => {
   const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
-  const [modalGroup, setModalGroup] = useState<StackGroup | null>(null);
+  const [modalGroup, setModalGroup] = useState<StackGroupVO | StackGroup | null>(null);
 
-  // 按完整堆栈分组
-  const groups = useMemo<StackGroup[]>(() => {
+  // 优先使用后端预分组数据
+  const groups = useMemo<(StackGroupVO | StackGroup)[]>(() => {
+    if (stackGroups) {
+      return stackGroups.filter((g) => {
+        if (!searchText) return true;
+        const kw = searchText.toLowerCase();
+        return g.firstFrame.toLowerCase().includes(kw)
+          || g.secondFrame.toLowerCase().includes(kw)
+          || g.sampleThread.stackTrace?.some((f) => f.toLowerCase().includes(kw));
+      });
+    }
+    // 降级：前端自行分组
     const map = new Map<string, ThreadSummary[]>();
     threads.forEach((t) => {
-      const key = t.stackTrace.join('\x00');
+      const key = t.stackTrace ? t.stackTrace.join('\x00') : '(no stack)';
       const arr = map.get(key);
       if (arr) arr.push(t);
       else map.set(key, [t]);
@@ -151,34 +163,21 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
         count: arr.length,
         sampleThread: arr[0],
         allThreads: arr,
-        firstFrame: arr[0].stackTrace[0] || t('threads.noFrame'),
-        secondFrame: arr[0].stackTrace[1] || '',
+        allThreadNames: arr.map(t => t.name),
+        firstFrame: arr[0].stackTrace?.[0] || t('threads.noFrame'),
+        secondFrame: arr[0].stackTrace?.[1] || '',
         states,
       });
     });
-    // 按线程数降序
     result.sort((a, b) => b.count - a.count);
     return result;
-  }, [threads]);
-
-  // 搜索过滤
-  const filteredGroups = useMemo(() => {
-    if (!searchText) return groups;
-    const kw = searchText.toLowerCase();
-    return groups.filter((g) =>
-      g.firstFrame.toLowerCase().includes(kw) ||
-      g.secondFrame.toLowerCase().includes(kw) ||
-      g.sampleThread.name.toLowerCase().includes(kw) ||
-      g.allThreads.some((t) => t.name.toLowerCase().includes(kw)) ||
-      g.sampleThread.stackTrace.some((f) => f.toLowerCase().includes(kw))
-    );
-  }, [groups, searchText]);
+  }, [threads, stackGroups, searchText, t]);
 
   const totalGroups = groups.length;
   const topGroup = groups[0];
   const topGroupPct = topGroup ? ((topGroup.count / threads.length) * 100).toFixed(1) : '0';
 
-  const columns: ColumnsType<StackGroup> = [
+  const columns: ColumnsType<StackGroup | StackGroupVO> = [
     {
       title: t('threads.count'),
       dataIndex: 'count',
@@ -200,7 +199,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
       ),
       key: 'frames',
       ellipsis: true,
-      render: (_: unknown, g: StackGroup) => (
+      render: (_: unknown, g: StackGroup | StackGroupVO) => (
         <div>
           <div style={{ fontFamily: "'Fira Code','Consolas',monospace", fontSize: 12, color: '#1890ff' }}>
             {g.firstFrame}
@@ -217,7 +216,7 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
       title: t('threads.state'),
       key: 'states',
       width: 140,
-      render: (_: unknown, g: StackGroup) => (
+      render: (_: unknown, g: StackGroup | StackGroupVO) => (
         <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {Object.entries(g.states).map(([s, c]) => (
             <Tag
@@ -235,13 +234,10 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
       title: t('threads.threadName'),
       key: 'names',
       ellipsis: true,
-      render: (_: unknown, g: StackGroup) => (
+      render: (_: unknown, g: StackGroup | StackGroupVO) => (
         <span style={{ fontSize: 12, color: '#666' }}>
-          {g.allThreads
-            .slice(0, 3)
-            .map((t) => t.name)
-            .join('、')}
-          {g.allThreads.length > 3 && t('threads.andNMore', { count: g.allThreads.length })}
+          {g.allThreadNames.slice(0, 3).join(', ')}
+          {g.allThreadNames.length > 3 && t('threads.andNMore', { count: g.allThreadNames.length })}
         </span>
       ),
     },
@@ -293,11 +289,11 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
       }
       style={{ marginBottom: 16 }}
     >
-      {filteredGroups.length === 0 ? (
+      {groups.length === 0 ? (
         <Empty description={t('threads.emptyStackGroup')} style={{ padding: 20 }} />
       ) : (
-        <Table<StackGroup>
-          dataSource={filteredGroups}
+        <Table
+          dataSource={groups}
           columns={columns}
           rowKey="key"
           size="middle"
@@ -374,10 +370,10 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
             {/* 线程名列表 */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <Text strong style={{ fontSize: 13 }}>{t('threads.threadNames', { count: modalGroup.allThreads.length })}</Text>
+                <Text strong style={{ fontSize: 13 }}>{t('threads.threadNames', { count: modalGroup.allThreadNames.length })}</Text>
                 <span
                   onClick={() => {
-                    const text = modalGroup.allThreads.map((t) => t.name).join('\n');
+                    const text = modalGroup.allThreadNames.join('\n');
                     navigator.clipboard?.writeText(text).then(() => {
                       message.success(t('threads.copyNamesSuccess'));
                     }).catch(() => message.error(t('threads.copyNamesFail')));
@@ -399,9 +395,9 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
                   color: '#333',
                 }}
               >
-                {modalGroup.allThreads.map((t, i) => (
+                {modalGroup.allThreadNames.map((name, i) => (
                   <div key={i} style={{ padding: '2px 0' }}>
-                    {t.name}
+                    {name}
                   </div>
                 ))}
               </div>
@@ -413,9 +409,91 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[] }> = ({ threads })
   );
 };
 
-// ========== 线程列表（原样保留） ==========
+// ========== 懒加载调用栈 ==========
 
-const ThreadList: React.FC<{ threads: ThreadSummary[]; deadlockCount?: number }> = ({ threads, deadlockCount }) => {
+/**
+ * 按需加载线程完整调用栈。
+ * 通过分桶索引 + 缓存避免每次展开都请求后端。
+ */
+const LazyStackTrace: React.FC<{
+  threadsIdx: Record<number, number>;
+  bucketCache: Map<number, ThreadSummary[]>;
+  loadBucket: (bucket: number) => void;
+  tid: number;
+}> = ({ threadsIdx, bucketCache, loadBucket, tid }) => {
+  const { t } = useTranslation();
+
+  const bucket = threadsIdx[tid];
+  const cached = bucket != null ? bucketCache.get(bucket) : undefined;
+  const detail = cached?.find(d => d.tid === tid);
+
+  // 缓存未命中 → 触发加载
+  useEffect(() => {
+    if (bucket != null && !cached) {
+      loadBucket(bucket);
+    }
+  }, [bucket, cached, loadBucket]);
+
+  if (bucket == null) {
+    return <Text type="secondary">tid={tid} {t('threads.noFrame')}</Text>;
+  }
+
+  if (!cached) {
+    return <div style={{ textAlign: 'center', padding: 20 }}><Spin tip={t('threads.loading')} /></div>;
+  }
+
+  if (!detail || !detail.stackTrace || detail.stackTrace.length === 0) {
+    return <Text type="secondary">{t('threads.noFrame')}</Text>;
+  }
+
+  const rawLines = buildRawStackLines(detail);
+  return (
+    <div style={{ padding: '4px 0' }}>
+      <Text strong style={{ fontSize: 13 }}>
+        {t('threads.stackTrace')}（{t('threads.stackFrameCount', { count: detail.stackTrace.length })}）
+      </Text>
+      <pre
+        style={{
+          background: '#1e1e1e',
+          color: '#d4d4d4',
+          padding: 16,
+          borderRadius: 8,
+          fontSize: 12,
+          lineHeight: 1.8,
+          maxHeight: 400,
+          overflow: 'auto',
+          fontFamily: "'Fira Code', 'Consolas', 'Courier New', monospace",
+        }}
+      >
+        {rawLines.map((line, i) => {
+          const isAtLine = line.startsWith('at ');
+          const isWaitingLine = line.startsWith('- waiting to lock') || line.startsWith('- parking to wait');
+          const isLockedLine = line.startsWith('- locked');
+          let color = '#d4d4d4';
+          if (isAtLine) color = '#dcdcaa';
+          else if (isLockedLine) color = '#569cd6';
+          else if (isWaitingLine) color = '#ce9178';
+          return (
+            <div key={i} style={{ color }}>
+              {line}
+            </div>
+          );
+        })}
+      </pre>
+    </div>
+  );
+};
+
+// ========== 线程列表 ==========
+
+const ThreadList: React.FC<{
+  threads: ThreadSummary[];
+  deadlockCount?: number;
+  reportId?: string;
+  threadsIdx?: Record<number, number> | null;
+  bucketCache?: Map<number, ThreadSummary[]>;
+  loadBucket?: (bucket: number) => void;
+}> = ({ threads, deadlockCount, reportId, threadsIdx, bucketCache, loadBucket }) => {
   const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
   const [filterType, setFilterType] = useState<null | 'deadlock' | 'finalizerTrap' | 'throwingException'>(null);
@@ -430,7 +508,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[]; deadlockCount?: number }>
           return (
             t.name.toLowerCase().includes(q) ||
             t.state.toLowerCase().includes(q) ||
-            t.stackTrace.some((f) => f.toLowerCase().includes(q))
+            t.stackTrace?.some((f) => f.toLowerCase().includes(q))
           );
         }
         return true;
@@ -479,7 +557,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[]; deadlockCount?: number }>
       key: 'name',
       width: 280,
       ellipsis: true,
-      render: (name: string, record) => (
+      render: (name: string, record: ThreadSummary) => (
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           {record.inDeadlock && (
             <Tooltip title={t('deadlockTag')}>
@@ -518,7 +596,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[]; deadlockCount?: number }>
       dataIndex: 'state',
       key: 'state',
       width: 140,
-      render: (state: string, record) => {
+      render: (state: string, record: ThreadSummary) => {
         let tagColor = stateColorMap[state] || 'default';
         if (record.inDeadlock) tagColor = '#ff4d4f';
         else if (record.finalizerTrapped) tagColor = '#fa8c16';
@@ -537,7 +615,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[]; deadlockCount?: number }>
         text: s,
         value: s,
       })),
-      onFilter: (value, record) => record.state === value,
+      onFilter: (value: React.Key | boolean, record: ThreadSummary) => record.state === value,
     },
     {
       title: t('threads.waitingLock'),
@@ -545,7 +623,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[]; deadlockCount?: number }>
       key: 'waitingOnLock',
       width: 200,
       ellipsis: true,
-      render: (v: string | undefined, record) =>
+      render: (v: string | undefined, record: ThreadSummary) =>
         v ? (
           <Text code style={{ fontSize: 12, fontFamily: 'monospace' }}>
             {v}
@@ -559,10 +637,14 @@ const ThreadList: React.FC<{ threads: ThreadSummary[]; deadlockCount?: number }>
       title: t('threads.stackDepth'),
       key: 'stackDepth',
       width: 90,
-      render: (_: unknown, record) => record.stackTrace.length,
-      sorter: (a, b) => a.stackTrace.length - b.stackTrace.length,
+      render: (_: unknown, record: ThreadSummary) => record.stackTrace?.length ?? 0,
+      sorter: (a: ThreadSummary, b: ThreadSummary) => (a.stackTrace?.length ?? 0) - (b.stackTrace?.length ?? 0),
     },
-  ];
+  ].filter((col) => {
+    // 分享模式下隐藏栈深度列（加载前未知）
+    if (reportId && col.key === 'stackDepth') return false;
+    return true;
+  });
 
   return (
     <Card
@@ -727,11 +809,16 @@ const ThreadList: React.FC<{ threads: ThreadSummary[]; deadlockCount?: number }>
         }}
         expandable={{
           expandedRowRender: (record) => {
+            // 分享模式：按需加载调用栈
+            if (reportId && !record.stackTrace?.length) {
+              return <LazyStackTrace threadsIdx={threadsIdx!} bucketCache={bucketCache!} loadBucket={loadBucket!} tid={record.tid!} />;
+            }
+            // 传统模式：直接渲染调用栈
             const rawLines = buildRawStackLines(record);
             return (
               <div style={{ padding: '4px 0' }}>
                 <Text strong style={{ fontSize: 13 }}>
-                  {t('threads.stackTrace')}（{t('threads.stackFrameCount', { count: record.stackTrace.length })}）
+                  {t('threads.stackTrace')}（{t('threads.stackFrameCount', { count: record.stackTrace?.length ?? 0 })}）
                 </Text>
                 <pre
                   style={{
@@ -764,7 +851,7 @@ const ThreadList: React.FC<{ threads: ThreadSummary[]; deadlockCount?: number }>
               </div>
             );
           },
-          rowExpandable: (record) => record.stackTrace.length > 0,
+          rowExpandable: (record) => reportId ? !!record.tid : (record.stackTrace?.length ?? 0) > 0,
         }}
         size="middle"
         scroll={{ x: 800 }}
@@ -809,13 +896,18 @@ interface ThreadsProps {
   threads: ThreadSummary[];
   view?: 'list' | 'groups';
   deadlockCount?: number;
+  reportId?: string;
+  threadsIdx?: Record<number, number> | null;
+  bucketCache?: Map<number, ThreadSummary[]>;
+  loadBucket?: (bucket: number) => void;
+  stackGroups?: StackGroupVO[] | null;
 }
 
-const Threads: React.FC<ThreadsProps> = ({ threads, view = 'list', deadlockCount }) => {
+const Threads: React.FC<ThreadsProps> = ({ threads, view = 'list', deadlockCount, reportId, threadsIdx, bucketCache, loadBucket, stackGroups }) => {
   return (
     <div>
-      {view === 'groups' && <StackGroupAnalysis threads={threads} />}
-      {view === 'list' && <ThreadList threads={threads} deadlockCount={deadlockCount} />}
+      {view === 'groups' && <StackGroupAnalysis threads={threads} stackGroups={stackGroups} />}
+      {view === 'list' && <ThreadList threads={threads} deadlockCount={deadlockCount} reportId={reportId} threadsIdx={threadsIdx} bucketCache={bucketCache} loadBucket={loadBucket} />}
     </div>
   );
 };

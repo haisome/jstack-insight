@@ -16,9 +16,10 @@ import {
 } from '@ant-design/icons';
 import type { UploadFile, UploadProps } from 'antd';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { uploadAndAnalyze } from '../../services/api';
-import type { AnalysisResultVO } from '../../types';
+import type { ReportSummary } from '../../types';
 
 const { Dragger } = Upload;
 const { Title, Paragraph, Text } = Typography;
@@ -27,12 +28,9 @@ const { Title, Paragraph, Text } = Typography;
 const CMD_COMBINED = 'top -H -p <pid> -n 1 -b > top_threads.txt && jstack -l <pid> > jstack.txt';
 const CMD_JSTACK_ONLY = 'jstack -l <pid> > jstack.txt';
 
-interface UploadPageProps {
-  onResult: (result: AnalysisResultVO, rawFile: File | null) => void;
-}
-
-const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
+const UploadPage: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
@@ -51,9 +49,9 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
 
     setLoading(true);
     try {
-      const result = await uploadAndAnalyze(rawFile);
+      const summary: ReportSummary = await uploadAndAnalyze(rawFile);
       message.success(t('upload.successAnalyzed'));
-      onResult(result, rawFile);
+      navigate(`/report/${summary.uuid}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('upload.errorAnalyzeFailed');
       message.error(msg);
@@ -67,10 +65,8 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
     multiple: false,
     accept: '.txt',
     fileList,
-    // 阻止自动上传，由「开始分析」按钮手动触发
     beforeUpload: () => false,
     onChange: (info) => {
-      // 只保留最后一个文件
       const latest = info.fileList.slice(-1);
       setFileList(latest);
     },
@@ -86,7 +82,6 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '40px 24px',
-        position: 'relative',
       }}
     >
       {/* 语言切换 - 右上角 */}
@@ -209,9 +204,6 @@ const UploadPage: React.FC<UploadPageProps> = ({ onResult }) => {
             >
               <QuestionCircleOutlined style={{ color: '#999', cursor: 'pointer', fontSize: 13 }} />
             </Popover>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {t('upload.privacyNote')}
-            </Text>
           </Space>
         </div>
       </div>

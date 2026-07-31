@@ -10,7 +10,7 @@ import com.zeng.jstackinsight.service.parser.model.JStackDump;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -41,20 +41,51 @@ public class AnalysisServiceImpl {
         this.converter = converter;
     }
 
+    /**
+     * 快速检测文本前几 KB 是否像是 jstack 输出。
+     */
+    private boolean looksLikeJstack(String head) {
+        if (head.contains("tid=0x") && head.contains("nid=0x")) return true;
+        if (head.contains("Full thread dump")) return true;
+        if (head.contains("java.lang.Thread.State")) return true;
+        return false;
+    }
+
     public JStackParser getParser() {
         return parser;
     }
 
     /**
-     * 分析上传的 jstack 文件。
-     *
-     * @param file 上传的 .txt 文件
-     * @return 分析结果 VO
-     * @throws IOException 文件读取失败
+     * 分析上传的 jstack 文件（仅支持 .txt）。
      */
     public AnalysisResultVO analyze(MultipartFile file) throws IOException {
-        String content = new String(file.getBytes(), StandardCharsets.UTF_8);
-        return analyze(content);
+        String filename = file.getOriginalFilename();
+        if (filename == null) filename = "unknown";
+
+        try (InputStream rawStream = file.getInputStream()) {
+            // 快速校验：读前 2KB 检查是否为 jstack 格式，拒绝恶意大文件
+            byte[] head = new byte[2048];
+            int read = rawStream.read(head, 0, head.length);
+            if (read <= 0) {
+                throw new IllegalArgumentException("文件内容为空");
+            }
+            String headStr = new String(head, 0, read, StandardCharsets.UTF_8);
+            if (!looksLikeJstack(headStr)) {
+                throw new IllegalArgumentException(
+                        "文件格式不正确：未检测到 jstack 线程转储特征");
+            }
+
+            InputStream combined = new SequenceInputStream(
+                    new ByteArrayInputStream(head, 0, read), rawStream);
+            JStackDump dump = parser.parse(combined);
+
+            // 分类检测
+            DeadlockDetector.DetectionResult deadlockResult = deadlockDetector.detect(dump.getThreads());
+            FinalizerTrapDetector.DetectionResult finalizerTrapResult = finalizerTrapDetector.detect(dump.getThreads());
+            ExceptionDetector.DetectionResult exceptionResult = exceptionDetector.detect(dump.getThreads());
+
+            return converter.convert(dump, deadlockResult, finalizerTrapResult, exceptionResult);
+        }
     }
 
     /**

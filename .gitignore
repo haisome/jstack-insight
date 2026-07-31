@@ -32,6 +32,8 @@ pnpm-debug.log*
 backend/target/
 
 # ==================== 其他 ====================
+# 分析报告存储目录（服务端运行时生成）
+jstackInsightData/
 # 上传的分析文件（可选）
 # uploads/
 # analysis/

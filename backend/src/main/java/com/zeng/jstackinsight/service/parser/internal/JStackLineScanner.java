@@ -4,6 +4,11 @@ import com.zeng.jstackinsight.service.parser.model.JStackDump;
 import com.zeng.jstackinsight.service.parser.model.ThreadInfo;
 import org.springframework.util.StringUtils;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -243,6 +248,179 @@ public class JStackLineScanner {
         }
 
         return dump;
+    }
+
+    /**
+     * 流式解析：从 {@link BufferedReader} 逐行读取，FSM 推进。
+     *
+     * <p>内存占用恒定（仅保留解析后的结构化数据），
+     * 适合大文件和压缩流场景。
+     *
+     * @param reader jstack 文本的 BufferedReader
+     * @return 解析结果
+     */
+    public JStackDump parseStream(BufferedReader reader) throws IOException {
+        JStackDump dump = new JStackDump();
+
+        ParserState state = ParserState.INIT;
+        ThreadInfo current = null;
+        String line;
+
+        while ((line = reader.readLine()) != null) {
+            current = processLine(dump, current, state, line);
+            if (current == null) {
+                state = ParserState.INIT;
+            } else {
+                state = determineNextState(state, line, current);
+            }
+        }
+
+        // 文件末尾可能没有空行，处理最后一个线程
+        if (current != null) {
+            finalizeThread(dump, current);
+        }
+
+        return dump;
+    }
+
+    /**
+     * 流式解析：从 {@link InputStream} 逐行读取（UTF-8 编码）。
+     *
+     * @param inputStream jstack 文本输入流
+     * @return 解析结果
+     */
+    public JStackDump parseStream(InputStream inputStream) throws IOException {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            return parseStream(reader);
+        }
+    }
+
+    /**
+     * 处理单行输入，返回当前线程对象（null 表示线程已结束，等待新线程）。
+     */
+    private ThreadInfo processLine(JStackDump dump, ThreadInfo current,
+                                    ParserState state, String line) {
+        switch (state) {
+            case INIT:
+                current = tryParseThreadHeader(line);
+                if (current == null) {
+                    if (dump.getTimestamp() == null && !line.trim().isEmpty()
+                            && !line.startsWith("Full thread dump")) {
+                        dump.setTimestamp(line.trim());
+                    } else if (line.startsWith("Full thread dump")) {
+                        dump.setJvmInfo(line.trim());
+                    }
+                }
+                return current;
+
+            case THREAD_HEADER:
+                Matcher stateMatcher = THREAD_STATE_PATTERN.matcher(line);
+                if (stateMatcher.find()) {
+                    current.setState(stateMatcher.group(1).toUpperCase());
+                } else if (line.trim().isEmpty()) {
+                    finalizeThread(dump, current);
+                    return null;
+                }
+                return current;
+
+            case STACK_FRAMES:
+                if (!line.trim().isEmpty()) {
+                    parseStackLine(line, current);
+                }
+                return current;
+
+            case POST_STACK:
+                if (OWNED_SYNC_HEADER.matcher(line).find()) {
+                    return current; // 转入 OWNED_SYNCS
+                } else if (line.trim().isEmpty()) {
+                    // 连续空行，等待
+                    return current;
+                } else if (line.startsWith("\"")) {
+                    finalizeThread(dump, current);
+                    ThreadInfo next = tryParseThreadHeader(line);
+                    return next; // null → INIT，非 null → THREAD_HEADER
+                } else {
+                    finalizeThread(dump, current);
+                    return tryParseThreadHeader(line);
+                }
+
+            case OWNED_SYNCS:
+                Matcher syncLine = OWNED_SYNC_LINE.matcher(line);
+                if (syncLine.find()) {
+                    if (current != null) {
+                        current.getLockedMonitors().add(syncLine.group(1));
+                        String cls = syncLine.group(2);
+                        if (cls != null) {
+                            current.getLockedMonitorClasses().add(cls);
+                        }
+                    }
+                    return current;
+                } else if ("- None".equals(line.trim()) || "- none".equals(line.trim())) {
+                    return current;
+                } else if (line.trim().isEmpty()) {
+                    finalizeThread(dump, current);
+                    return null;
+                } else {
+                    finalizeThread(dump, current);
+                    return null;
+                }
+
+            default:
+                return current;
+        }
+    }
+
+    /**
+     * 根据当前行决定下一状态。
+     */
+    private ParserState determineNextState(ParserState state, String line, ThreadInfo current) {
+        if (current == null) {
+            return ParserState.INIT;
+        }
+
+        switch (state) {
+            case INIT:
+                return ParserState.THREAD_HEADER;
+
+            case THREAD_HEADER:
+                Matcher stateMatcher = THREAD_STATE_PATTERN.matcher(line);
+                if (stateMatcher.find()) {
+                    return ParserState.STACK_FRAMES;
+                } else if (line.trim().isEmpty()) {
+                    return ParserState.INIT; // 已在 processLine 中 finalize
+                }
+                return ParserState.THREAD_HEADER;
+
+            case STACK_FRAMES:
+                if (line.trim().isEmpty()) {
+                    return ParserState.POST_STACK;
+                }
+                return ParserState.STACK_FRAMES;
+
+            case POST_STACK:
+                if (OWNED_SYNC_HEADER.matcher(line).find()) {
+                    return ParserState.OWNED_SYNCS;
+                } else if (line.trim().isEmpty()) {
+                    return ParserState.POST_STACK;
+                } else if (line.startsWith("\"")) {
+                    // processLine 已处理 finalize + 新线程头
+                    ThreadInfo next = tryParseThreadHeader(line);
+                    return next != null ? ParserState.THREAD_HEADER : ParserState.INIT;
+                } else {
+                    ThreadInfo next = tryParseThreadHeader(line);
+                    return next != null ? ParserState.THREAD_HEADER : ParserState.INIT;
+                }
+
+            case OWNED_SYNCS:
+                if (line.trim().isEmpty()) {
+                    return ParserState.INIT;
+                }
+                return ParserState.OWNED_SYNCS;
+
+            default:
+                return ParserState.INIT;
+        }
     }
 
     // ================================================================

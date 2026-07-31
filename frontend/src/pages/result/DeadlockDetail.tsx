@@ -346,7 +346,7 @@ const DeadlockDetail: React.FC<DeadlockDetailProps> = ({
               </Popover>
             </div>
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
-              {descriptions[analysis.chainIndex]}
+              {descriptions?.[analysis.chainIndex]}
             </Text>
 
             {/* 水平流向图 */}
@@ -380,7 +380,7 @@ const DeadlockDetail: React.FC<DeadlockDetailProps> = ({
                               {thread.waitingOnLock && (
                                 <div>{t('deadlock.waitingFor').replace(':','')}: {formatLockAddress(thread.waitingOnLock)}</div>
                               )}
-                              {thread.lockedMonitors.length > 0 && (
+                              {thread.lockedMonitors && thread.lockedMonitors.length > 0 && (
                                 <div>{t('deadlock.locked').replace(':','')}: {thread.lockedMonitors.map(formatLockAddress).join(', ')}</div>
                               )}
                             </>
@@ -702,7 +702,7 @@ const DeadlockDetail: React.FC<DeadlockDetailProps> = ({
                       <Text strong style={{ fontSize: 12, color: '#999' }}>
                         {t('deadlock.locked')}
                       </Text>
-                      {thread.lockedMonitors.length > 0 ? (
+                      {thread.lockedMonitors && thread.lockedMonitors.length > 0 ? (
                         <div style={{ marginTop: 4 }}>
                           {thread.lockedMonitors.map((addr, idx) => (
                             <div key={addr} style={{ marginBottom: 4 }}>
@@ -754,7 +754,7 @@ const DeadlockDetail: React.FC<DeadlockDetailProps> = ({
                           {thread.waitingOnLockClass && ` (a ${thread.waitingOnLockClass})`}
                         </div>
                       )}
-                      {thread.stackTrace.map((frame, fi) => (
+                      {thread.stackTrace?.map((frame, fi) => (
                         <div
                           key={fi}
                           style={{
@@ -765,8 +765,9 @@ const DeadlockDetail: React.FC<DeadlockDetailProps> = ({
                           at {frame}
                         </div>
                       ))}
-                      {thread.lockedMonitors.map((addr, idx) => (
-                        <div
+                      {thread.lockedMonitors && thread.lockedMonitors.length > 0 && (
+                        thread.lockedMonitors.map((addr, idx) => (
+                          <div
                           key={`locked-${idx}`}
                           style={{ color: '#6a9955', marginTop: 4 }}
                         >
@@ -774,7 +775,7 @@ const DeadlockDetail: React.FC<DeadlockDetailProps> = ({
                           {thread.lockedMonitorClasses?.[idx] &&
                             ` (a ${thread.lockedMonitorClasses[idx]})`}
                         </div>
-                      ))}
+                      )))}
                     </div>
                   </div>
                 </Panel>

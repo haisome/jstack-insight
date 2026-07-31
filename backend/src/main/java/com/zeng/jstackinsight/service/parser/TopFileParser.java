@@ -127,8 +127,26 @@ public class TopFileParser {
     }
 
     /**
-     * 规范化 nid：统一为纯小写十六进制（去掉 0x 前缀，补零到至少 4 位）
+     * 轻量关联：仅基于 nid 字符串匹配，不依赖 ThreadInfo。
+     * <p>适合从报告摘要中获取 nid 列表的场景（不需要关联原始解析对象）。
+     *
+     * @param topCpuMap top 解析结果：PID(十进制) -> CPU%
+     * @param nidSet    jstack 中所有线程的 nid 集合（已规范化，小写无 0x 前缀）
+     * @return 匹配到的线程 CPU% 映射：nid(小写无 0x 前缀) -> CPU%
      */
+    public Map<String, Double> correlateByNid(
+            Map<Integer, Double> topCpuMap,
+            java.util.Set<String> nidSet) {
+
+        Map<String, Double> cpuByNid = new LinkedHashMap<>();
+        for (Map.Entry<Integer, Double> entry : topCpuMap.entrySet()) {
+            String hexNid = normalizeNid(Integer.toHexString(entry.getKey()));
+            if (nidSet.contains(hexNid)) {
+                cpuByNid.put(hexNid, entry.getValue());
+            }
+        }
+        return cpuByNid;
+    }
     private String normalizeNid(String nid) {
         String n = nid.toLowerCase();
         if (n.startsWith("0x")) {

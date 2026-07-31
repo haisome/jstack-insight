@@ -136,7 +136,7 @@ const LockGraph: React.FC<LockGraphProps> = ({ lockGraph, threads, visible = tru
     const hasWaitingLock = !!thread.waitingOnLock;
     let waitingInserted = false;
 
-    for (let i = 0; i < thread.stackTrace.length; i++) {
+    for (let i = 0; i < (thread.stackTrace?.length ?? 0); i++) {
       lines.push(`at ${thread.stackTrace[i]}`);
       if (!waitingInserted && hasWaitingLock && i === 0) {
         waitingInserted = true;

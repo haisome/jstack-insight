@@ -1,7 +1,9 @@
 package com.zeng.jstackinsight.api.response;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * 分析结果汇总 VO（主响应体）
@@ -13,6 +15,8 @@ import lombok.Data;
  */
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class AnalysisResultVO {
 
     /** 线程状态汇总（饼图、列表） */

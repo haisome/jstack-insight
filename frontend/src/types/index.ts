@@ -114,3 +114,23 @@ export interface AnalysisResultVO {
   flameGraph: FlameGraphVO;
   deadlockChain: DeadlockChainVO;
 }
+
+// ========== 报告分享 ==========
+
+export interface ReportSummary {
+  uuid: string;
+  filename: string;
+  expiresAt: number;
+  totalThreads: number;
+  hasDeadlock: boolean;
+}
+
+export interface StackGroupVO {
+  stackKey: string;
+  count: number;
+  firstFrame: string;
+  secondFrame: string;
+  states: Record<string, number>;
+  sampleThread: ThreadSummary;
+  allThreadNames: string[];
+}

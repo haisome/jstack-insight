@@ -1,7 +1,9 @@
 package com.zeng.jstackinsight.api.response;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 
@@ -22,6 +24,8 @@ import java.util.List;
  */
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class FlameGraphVO {
 
     /** 根节点（虚拟根，代表全部线程） */
@@ -32,6 +36,8 @@ public class FlameGraphVO {
      */
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class FlameNode {
         /** 节点名称（方法签名或包名） */
         private String name;

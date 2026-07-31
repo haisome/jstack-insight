@@ -15,18 +15,17 @@ import { useTranslation } from 'react-i18next';
 import type { UploadFile, UploadProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { ThreadSummary, TopCpuVO, TopCpuThreadInfo } from '../../types';
-import { uploadTopForCpu } from '../../services/api';
+import { uploadTopForCpuByReport } from '../../services/api';
 
 const { Title, Text } = Typography;
 
 interface CpuAnalysisProps {
   threads: ThreadSummary[];
-  /** jstack 原始文件对象（用于精准 CPU 关联时重新上传） */
   jstackRawFile?: File | null;
-  /** 精准 CPU 分析结果（由 ResultPage 提升状态） */
+  /** 报告 UUID（分享模式下使用，精准 CPU 关联时不需要 jstack 文件） */
+  reportId?: string;
   cpuTopResult: TopCpuVO | null;
   setCpuTopResult: (v: TopCpuVO | null) => void;
-  /** 精准 CPU 分析的 top 文件列表（由 ResultPage 提升状态） */
   cpuTopFileList: UploadFile[];
   setCpuTopFileList: (v: UploadFile[]) => void;
   /** 视图模式：inference=CPU线程推测，precise=精准CPU采集 */
@@ -163,6 +162,7 @@ const COMMAND_DEMO_COMBINED = COMMAND_DEMO_TOP + ' && ' + COMMAND_DEMO_JSTACK;
 const PreciseCpuCollection: React.FC<{
   threads: ThreadSummary[];
   jstackRawFile?: File | null;
+  reportId?: string;
   topResult: TopCpuVO | null;
   setTopResult: (v: TopCpuVO | null) => void;
   topFileList: UploadFile[];
@@ -170,6 +170,7 @@ const PreciseCpuCollection: React.FC<{
 }> = ({
   threads,
   jstackRawFile,
+  reportId,
   topResult,
   setTopResult,
   topFileList,
@@ -195,6 +196,11 @@ const PreciseCpuCollection: React.FC<{
       return;
     }
 
+    if (!reportId) {
+      message.error(t('cpuAnalysis.errorNoJstack'));
+      return;
+    }
+
     const topRawFile = topFileList[0].originFileObj;
     if (!topRawFile) {
       message.error(t('cpuAnalysis.errorFileObject'));
@@ -203,7 +209,7 @@ const PreciseCpuCollection: React.FC<{
 
     setLoading(true);
     try {
-      const result = await uploadTopForCpu(jstackRawFile!, topRawFile);
+      const result = await uploadTopForCpuByReport(reportId, topRawFile);
       setTopResult(result);
       message.success(t('cpuAnalysis.successMatched', { count: result.matchedCount }));
     } catch (err) {
@@ -614,6 +620,7 @@ const PreciseCpuCollection: React.FC<{
 const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
   threads,
   jstackRawFile,
+  reportId,
   cpuTopResult,
   setCpuTopResult,
   cpuTopFileList,
@@ -1020,6 +1027,7 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
         <PreciseCpuCollection
           threads={threads}
           jstackRawFile={jstackRawFile}
+          reportId={reportId}
           topResult={cpuTopResult}
           setTopResult={setCpuTopResult}
           topFileList={cpuTopFileList}
