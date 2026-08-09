@@ -23,8 +23,8 @@ import java.util.concurrent.TimeUnit;
  * <p>存储结构（线程详情按 50 条/桶分批，避免单文件过大或文件数暴增）：
  * <pre>
  *   jstackInsightData/reports/
- *     {yyyy-MM-dd}/
- *       {uuid}/
+ *     {yyyyMMdd}/              — 日期目录，方便文件管理
+ *       {rawUuid}/             — 原始 UUID 目录（不含日期前缀）
  *         meta.json              — 元数据 (~200B)
  *         threads-summary.json   — 线程摘要，不含调用栈 (~200KB)
  *         threads-idx.json       — tid → 分桶索引 (~10KB)
@@ -42,6 +42,7 @@ public class ReportService {
     private static final Logger log = LoggerFactory.getLogger(ReportService.class);
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final com.fasterxml.jackson.databind.ObjectWriter prettyWriter = objectMapper.writerWithDefaultPrettyPrinter();
 
     @Value("${jstack-insight.report.dir:data/reports}")
     private String reportDir;
@@ -80,9 +81,10 @@ public class ReportService {
      * @return 报告 UUID
      */
     public String saveReport(AnalysisResultVO result, String filename) throws IOException {
-        String uuid = UUID.randomUUID().toString().replace("-", "");
-        String dateStr = java.time.LocalDate.now().toString();
-        File dir = new File(reportDir, dateStr + File.separator + uuid);
+        String rawUuid = UUID.randomUUID().toString().replace("-", "");
+        String dateStr = java.time.LocalDate.now().toString().replace("-", ""); // yyyyMMdd
+        String uuid = dateStr + rawUuid;
+        File dir = new File(reportDir, dateStr + File.separator + rawUuid);
         dir.mkdirs();
 
         // 1. 元数据
@@ -163,7 +165,7 @@ public class ReportService {
     }
 
     private void writeJson(File file, Object obj) throws IOException {
-        objectMapper.writerWithDefaultPrettyPrinter().writeValue(file, obj);
+        prettyWriter.writeValue(file, obj);
     }
 
     // ================================================================
@@ -305,7 +307,7 @@ public class ReportService {
     }
 
     /**
-     * 延长报告有效期。仅当距离过期不足 extendHours 小时时才延长至 extendHours。
+     * 延长报告有效期。仅当距离过期不足 extendHours 小时且距上次续期超过 2 小时时才延长。
      *
      * @return 延长后的过期时间戳
      */
@@ -317,9 +319,11 @@ public class ReportService {
         long now = System.currentTimeMillis();
         long desiredExpiry = now + TimeUnit.HOURS.toMillis(extendHours);
 
-        if (meta.getExpiresAt() < desiredExpiry) {
+        // 仅在过期时间不足且距上次续期超过 2 小时时才执行续期
+        if (meta.getExpiresAt() < desiredExpiry
+                && meta.getExpiresAt() < now + TimeUnit.HOURS.toMillis(extendHours - 2)) {
             meta.setExpiresAt(desiredExpiry);
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(file, meta);
+            prettyWriter.writeValue(file, meta);
             log.info("报告有效期已延长至{}h后: uuid={}", extendHours, uuid);
         }
         return meta.getExpiresAt();
@@ -404,23 +408,15 @@ public class ReportService {
     // ================================================================
 
     private File findReportFile(String uuid, String filename) {
-        File root = new File(reportDir);
-        File[] dateDirs = root.listFiles(File::isDirectory);
-        if (dateDirs == null) {
-            log.warn("报告根目录不存在或无权限: {}", root.getAbsolutePath());
+        // UUID 前 8 位为日期前缀 (yyyyMMdd)，直接定位到对应日期目录；后 32 位为原始 UUID 目录名
+        if (uuid == null || uuid.length() < 8) {
+            log.warn("无效的 UUID 格式: {}", uuid);
             return null;
         }
-
-        for (File dateDir : dateDirs) {
-            File reportDirFile = new File(dateDir, uuid);
-            if (reportDirFile.isDirectory()) {
-                File target = new File(reportDirFile, filename);
-                if (target.exists()) {
-                    return target;
-                }
-            }
-        }
-        return null;
+        String datePrefix = uuid.substring(0, 8);
+        String dirName = uuid.substring(8); // 原始 UUID（去掉日期前缀）
+        File target = new File(reportDir, datePrefix + File.separator + dirName + File.separator + filename);
+        return target.exists() ? target : null;
     }
 
     // ================================================================

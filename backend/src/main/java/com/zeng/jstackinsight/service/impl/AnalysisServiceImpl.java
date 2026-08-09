@@ -95,8 +95,13 @@ public class AnalysisServiceImpl {
      * @return 分析结果 VO
      */
     public AnalysisResultVO analyze(String content) {
-        // 1. FSM 解析
-        JStackDump dump = parser.parse(content);
+        // 1. FSM 流式解析（避免 split() 全量字符串复制）
+        JStackDump dump;
+        try (BufferedReader reader = new BufferedReader(new StringReader(content))) {
+            dump = parser.parse(reader);
+        } catch (IOException e) {
+            throw new RuntimeException("解析 jstack 内容失败", e);
+        }
 
         // 2. 各类检测
         DeadlockDetector.DetectionResult deadlockResult = deadlockDetector.detect(dump.getThreads());

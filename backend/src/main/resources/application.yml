@@ -2,6 +2,10 @@ server:
   port: 9595
   servlet:
     context-path: /
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/plain
+    min-response-size: 1024
 
 spring:
   application:

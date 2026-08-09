@@ -121,8 +121,8 @@ public class DeadlockDetector {
         Set<String> deadlockThreads = new HashSet<>();
 
         // 对每个 WHITE 节点启动 DFS
-        for (String start : new ArrayList<>(color.keySet())) {
-            if (color.getOrDefault(start, WHITE) == WHITE) {
+        for (String start : color.keySet()) {
+            if (color.get(start) != null && color.get(start) == WHITE) {
                 LinkedList<String> path = new LinkedList<>();
                 dfs(start, waitForGraph, color, path, allChains, deadlockThreads);
             }

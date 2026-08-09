@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { Layout, Menu, Button, Space, Typography, Tag, Breadcrumb, Spin, App, Popover } from 'antd';
 import type { UploadFile } from 'antd';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -78,7 +78,8 @@ const ReportResultPage: React.FC = () => {
 
   // 线程分桶索引 + 缓存（避免每次展开都请求）
   const [threadsIdx, setThreadsIdx] = useState<Record<number, number> | null>(null);
-  const [bucketCache, setBucketCache] = useState<Map<number, ThreadSummary[]>>(new Map());
+  const bucketCacheRef = useRef<Map<number, ThreadSummary[]>>(new Map());
+  const [bucketCacheVersion, setBucketCacheVersion] = useState(0);
   const [threadsFull, setThreadsFull] = useState<ThreadSummary[] | null>(null);
   const [threadsFullLoading, setThreadsFullLoading] = useState(false);
   const [stackGroups, setStackGroups] = useState<StackGroupVO[] | null>(null);
@@ -162,24 +163,39 @@ const ReportResultPage: React.FC = () => {
         }
         break;
     }
-  }, [activeTab, uuid, summary, threadsData, lockGraphData, flameGraphData, deadlockData, message]);
+  }, [activeTab, uuid, summary, message]);
 
-  // 按需加载分桶（带缓存）
+  // 按需加载分桶（带缓存，用 useRef 避免每次新增都全量复制 Map）
   const loadBucket = async (bucket: number) => {
-    if (!uuid || bucketCache.has(bucket)) return;
+    if (!uuid || bucketCacheRef.current.has(bucket)) return;
     try {
       const threads = await getThreadsBucket(uuid, bucket);
-      setBucketCache(prev => new Map(prev).set(bucket, threads));
+      bucketCacheRef.current.set(bucket, threads);
+      setBucketCacheVersion(v => v + 1); // 仅触发一次轻量重渲染
     } catch { /* ignore */ }
   };
 
   const handleBack = () => navigate('/');
+  const lastShareTimeRef = useRef(0);
+  const cachedExpiresAtRef = useRef(0);
 
   const handleShare = async () => {
     if (!uuid) return;
+    const url = `${window.location.origin}/report/${uuid}`;
+
+    // 2 小时内不再请求后端续期，直接复制并显示缓存的过期时间
+    const now = Date.now();
+    if (now - lastShareTimeRef.current < 2 * 60 * 60 * 1000) {
+      await navigator.clipboard.writeText(url);
+      const expiryStr = new Date(cachedExpiresAtRef.current).toLocaleString();
+      message.success(t('result.shareCopied', { time: expiryStr }));
+      return;
+    }
+
     try {
       const expiresAt = await extendReport(uuid);
-      const url = `${window.location.origin}/report/${uuid}`;
+      lastShareTimeRef.current = now;
+      cachedExpiresAtRef.current = expiresAt;
       await navigator.clipboard.writeText(url);
       const expiryStr = new Date(expiresAt).toLocaleString();
       message.success(t('result.shareCopied', { time: expiryStr }));
@@ -188,8 +204,8 @@ const ReportResultPage: React.FC = () => {
     }
   };
 
-  // 截取简短 UUID 用于展示
-  const shortUuid = uuid ? uuid.substring(0, 8) : '';
+  // 截取简短 UUID 用于展示（前 8 位是日期前缀，取后 8 位）
+  const shortUuid = uuid ? uuid.substring(uuid.length - 8) : '';
 
   const menuItems = [
     { key: 'overview', icon: <HomeOutlined />, label: t('result.menuOverview') },
@@ -368,7 +384,7 @@ const ReportResultPage: React.FC = () => {
                     deadlockCount={deadlockData?.detected ? deadlockData.chains.length : 0}
                     reportId={uuid}
                     threadsIdx={threadsIdx}
-                    bucketCache={bucketCache}
+                    bucketCache={bucketCacheRef.current}
                     loadBucket={loadBucket}
                   />
                 </Suspense>

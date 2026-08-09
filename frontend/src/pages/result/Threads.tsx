@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Card, Table, Tag, Typography, Empty, Popover, Modal, Input, message, Tooltip, Spin } from 'antd';
 import { SearchOutlined, BugOutlined, QuestionCircleOutlined, CopyOutlined, ExclamationCircleOutlined, WarningOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -130,19 +130,30 @@ const LockInfoSection: React.FC<{ thread: ThreadSummary }> = ({ thread }) => {
  */
 const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[]; stackGroups?: StackGroupVO[] | null }> = ({ threads, stackGroups }) => {
   const { t } = useTranslation();
-  const [searchText, setSearchText] = useState('');
+  const [searchInput, setSearchInput] = useState('');  // 输入框即时值
+  const [searchText, setSearchText] = useState('');     // 防抖后的搜索值
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [modalGroup, setModalGroup] = useState<StackGroupVO | StackGroup | null>(null);
 
-  // 优先使用后端预分组数据
+  // 搜索防抖 300ms
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchInput(value);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setSearchText(value);
+    }, 300);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, []);
+
+  // 分组计算（不依赖 searchText）
   const groups = useMemo<(StackGroupVO | StackGroup)[]>(() => {
     if (stackGroups) {
-      return stackGroups.filter((g) => {
-        if (!searchText) return true;
-        const kw = searchText.toLowerCase();
-        return g.firstFrame.toLowerCase().includes(kw)
-          || g.secondFrame.toLowerCase().includes(kw)
-          || g.sampleThread.stackTrace?.some((f) => f.toLowerCase().includes(kw));
-      });
+      return stackGroups;
     }
     // 降级：前端自行分组
     const map = new Map<string, ThreadSummary[]>();
@@ -171,10 +182,21 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[]; stackGroups?: Sta
     });
     result.sort((a, b) => b.count - a.count);
     return result;
-  }, [threads, stackGroups, searchText, t]);
+  }, [threads, stackGroups, t]);
 
-  const totalGroups = groups.length;
-  const topGroup = groups[0];
+  // 过滤（依赖 searchText）
+  const filteredGroups = useMemo(() => {
+    if (!searchText) return groups;
+    const kw = searchText.toLowerCase();
+    return groups.filter((g) =>
+      g.firstFrame.toLowerCase().includes(kw)
+      || g.secondFrame.toLowerCase().includes(kw)
+      || g.sampleThread.stackTrace?.some((f) => f.toLowerCase().includes(kw))
+    );
+  }, [groups, searchText]);
+
+  const totalGroups = filteredGroups.length;
+  const topGroup = filteredGroups[0];
   const topGroupPct = topGroup ? ((topGroup.count / threads.length) * 100).toFixed(1) : '0';
 
   const columns: ColumnsType<StackGroup | StackGroupVO> = [
@@ -280,8 +302,8 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[]; stackGroups?: Sta
             prefix={<SearchOutlined style={{ color: '#bbb' }} />}
             placeholder={t('threads.searchPlaceholder')}
             allowClear
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
+            value={searchInput}
+            onChange={(e) => handleSearchChange(e.target.value)}
             style={{ width: 260, fontSize: 13 }}
             size="small"
           />
@@ -289,11 +311,11 @@ const StackGroupAnalysis: React.FC<{ threads: ThreadSummary[]; stackGroups?: Sta
       }
       style={{ marginBottom: 16 }}
     >
-      {groups.length === 0 ? (
+      {filteredGroups.length === 0 ? (
         <Empty description={t('threads.emptyStackGroup')} style={{ padding: 20 }} />
       ) : (
         <Table
-          dataSource={groups}
+          dataSource={filteredGroups}
           columns={columns}
           rowKey="key"
           size="middle"
