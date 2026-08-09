@@ -1,14 +1,19 @@
 package com.zeng.jstackinsight.controller;
 
 import com.zeng.jstackinsight.api.response.*;
+import com.zeng.jstackinsight.service.impl.ExportService;
 import com.zeng.jstackinsight.service.impl.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 import java.util.List;
@@ -31,9 +36,11 @@ public class ReportController {
     private static final Logger log = LoggerFactory.getLogger(ReportController.class);
 
     private final ReportService reportService;
+    private final ExportService exportService;
 
-    public ReportController(ReportService reportService) {
+    public ReportController(ReportService reportService, ExportService exportService) {
         this.reportService = reportService;
+        this.exportService = exportService;
     }
 
     /**
@@ -200,6 +207,26 @@ public class ReportController {
         } catch (Exception e) {
             log.error("延长有效期失败: uuid={}, {}", uuid, e.toString());
             return Result.fail(404, "报告不存在或已过期: " + uuid);
+        }
+    }
+
+    /**
+     * 导出自包含的静态 HTML 报告文件。
+     */
+    @Operation(summary = "导出 HTML 报告", description = "生成自包含的静态 HTML 文件，可直接用浏览器打开")
+    @GetMapping("/{uuid}/export-html")
+    public ResponseEntity<byte[]> exportHtml(
+            @Parameter(description = "报告 UUID") @PathVariable String uuid) {
+        try {
+            String html = exportService.exportHtml(uuid);
+            byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(new MediaType("text", "html", StandardCharsets.UTF_8));
+            headers.setContentDispositionFormData("attachment", "jstack-report-" + uuid.substring(uuid.length() - 8) + ".html");
+            return ResponseEntity.ok().headers(headers).body(bytes);
+        } catch (Exception e) {
+            log.error("导出 HTML 失败: uuid={}, {}", uuid, e.toString());
+            throw new RuntimeException("导出失败: " + e.getMessage());
         }
     }
 }

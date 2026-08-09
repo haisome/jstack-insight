@@ -195,3 +195,10 @@ export async function extendReport(uuid: string): Promise<number> {
   );
   return response.data.data;
 }
+
+/**
+ * 导出静态 HTML 报告。
+ */
+export function getExportHtmlUrl(uuid: string): string {
+  return `${http.defaults.baseURL}/api/v1/report/${uuid}/export-html`;
+}

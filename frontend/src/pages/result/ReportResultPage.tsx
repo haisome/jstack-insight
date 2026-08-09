@@ -16,11 +16,12 @@ import {
   AimOutlined,
   ThunderboltOutlined,
   ShareAltOutlined,
+  DownloadOutlined,
   HeartFilled,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
-import { getReportSummary, getThreadsSummary, getReportLockGraph, getReportFlameGraph, getReportDeadlocks, extendReport, getThreadsIdx, getThreadsBucket, getReportStackGroups } from '../../services/api';
+import { getReportSummary, getThreadsSummary, getReportLockGraph, getReportFlameGraph, getReportDeadlocks, extendReport, getThreadsIdx, getThreadsBucket, getReportStackGroups, getExportHtmlUrl } from '../../services/api';
 import type { ReportSummary, ThreadStateVO, LockGraphVO, FlameGraphVO, DeadlockChainVO, TopCpuVO, ThreadSummary, StackGroupVO } from '../../types';
 
 const { Sider, Content } = Layout;
@@ -356,6 +357,15 @@ const ReportResultPage: React.FC = () => {
                 style={{ color: '#666', fontSize: 13 }}
               >
                 {t('result.share')}
+              </Button>
+            <Button
+                icon={<DownloadOutlined />}
+                href={uuid ? getExportHtmlUrl(uuid) : '#'}
+                type="text"
+                size="small"
+                style={{ color: '#666', fontSize: 13 }}
+              >
+                {t('common.download')}
               </Button>
             <LanguageSwitcher mode="dropdown" size="small" />
           </Space>
