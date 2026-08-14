@@ -2,8 +2,6 @@ package com.zeng.jstackinsight.service.impl;
 
 import com.zeng.jstackinsight.api.response.DeadlockChainVO;
 import com.zeng.jstackinsight.api.response.ThreadStateVO;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -22,8 +20,6 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ExportService {
-
-    private static final Logger log = LoggerFactory.getLogger(ExportService.class);
 
     @Autowired
     private ReportService reportService;
@@ -100,20 +96,16 @@ public class ExportService {
         ReportService.ReportSummaryVO summary = reportService.getSummary(uuid);
         ThreadStateVO threadState = reportService.getThreadStateSummary(uuid);
         DeadlockChainVO deadlocks = reportService.getDeadlocks(uuid);
-        List<ReportService.StackGroupVO> stackGroups;
-        try {
-            stackGroups = reportService.getStackGroups(uuid);
-        } catch (Exception e) {
-            stackGroups = Collections.emptyList();
-        }
 
-        // 加载完整线程详情（含调用栈）
+        // 加载完整线程详情（含调用栈），仅读一次分桶文件，复用给堆栈分组和 CPU 推测
         List<ThreadStateVO.ThreadSummary> fullThreads;
         try {
             fullThreads = reportService.getAllThreadDetails(uuid);
         } catch (Exception e) {
             fullThreads = Collections.emptyList();
         }
+        List<ReportService.StackGroupVO> stackGroups = reportService.buildStackGroups(fullThreads);
+
         // 构建 tid -> 完整详情的索引
         Map<Long, ThreadStateVO.ThreadSummary> tidToFull = new LinkedHashMap<>();
         for (ThreadStateVO.ThreadSummary t : fullThreads) {
@@ -157,7 +149,7 @@ public class ExportService {
 
         // ========== 线程列表 Tab ==========
         html.append("<div id=\"tab-threads\" class=\"tab-content\">\n");
-        html.append(renderThreadList(threadState, fullThreads, tidToFull));
+        html.append(renderThreadList(threadState, tidToFull));
         html.append("</div>\n");
 
         // ========== 相同堆栈 Tab ==========
@@ -408,7 +400,7 @@ public class ExportService {
     // 线程列表
     // ================================================================
 
-    private String renderThreadList(ThreadStateVO threadState, List<ThreadStateVO.ThreadSummary> fullThreads,
+    private String renderThreadList(ThreadStateVO threadState,
                                      Map<Long, ThreadStateVO.ThreadSummary> tidToFull) {
         StringBuilder sb = new StringBuilder();
         sb.append("<div class=\"card\">\n<h2>线程列表 (").append(threadState.getTotalThreads()).append(")</h2>\n");

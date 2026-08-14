@@ -5,6 +5,8 @@ import com.zeng.jstackinsight.api.response.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
@@ -37,6 +39,7 @@ import java.util.concurrent.TimeUnit;
  * @author zeng
  */
 @Service
+@EnableScheduling
 public class ReportService {
 
     private static final Logger log = LoggerFactory.getLogger(ReportService.class);
@@ -66,7 +69,6 @@ public class ReportService {
         if (cleaned > 0) {
             log.info("启动时清理了 {} 个过期报告", cleaned);
         }
-        scheduleCleanup();
     }
 
     // ================================================================
@@ -248,7 +250,13 @@ public class ReportService {
      * 返回量 ~50KB vs 全量 ~2MB。
      */
     public List<StackGroupVO> getStackGroups(String uuid) throws IOException {
-        List<ThreadStateVO.ThreadSummary> all = getAllThreadDetails(uuid);
+        return buildStackGroups(getAllThreadDetails(uuid));
+    }
+
+    /**
+     * 基于已加载的全量线程详情构建堆栈分组，避免重复读取分桶文件。
+     */
+    public List<StackGroupVO> buildStackGroups(List<ThreadStateVO.ThreadSummary> all) {
         Map<String, List<ThreadStateVO.ThreadSummary>> groups = new LinkedHashMap<>();
 
         for (ThreadStateVO.ThreadSummary t : all) {
@@ -333,25 +341,19 @@ public class ReportService {
     // 清理过期报告（递归删除含 threads 子目录）
     // ================================================================
 
-    private void scheduleCleanup() {
-        Thread cleanupThread = new Thread(() -> {
-            while (!Thread.currentThread().isInterrupted()) {
-                try {
-                    TimeUnit.MINUTES.sleep(30);
-                    int cleaned = cleanExpiredReports();
-                    if (cleaned > 0) {
-                        log.info("定时清理了 {} 个过期报告", cleaned);
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                } catch (Exception e) {
-                    log.warn("清理过期报告失败", e);
-                }
+    /**
+     * 定时清理过期报告，每 30 分钟执行一次。
+     */
+    @Scheduled(fixedDelay = 30 * 60 * 1000, initialDelay = 30 * 60 * 1000)
+    public void scheduledCleanup() {
+        try {
+            int cleaned = cleanExpiredReports();
+            if (cleaned > 0) {
+                log.info("定时清理了 {} 个过期报告", cleaned);
             }
-        }, "report-cleanup");
-        cleanupThread.setDaemon(true);
-        cleanupThread.start();
+        } catch (Exception e) {
+            log.warn("清理过期报告失败", e);
+        }
     }
 
     private int cleanExpiredReports() {
