@@ -1,6 +1,7 @@
 package com.zeng.jstackinsight.service.impl;
 
 import com.zeng.jstackinsight.api.response.DeadlockChainVO;
+import com.zeng.jstackinsight.api.response.FlameGraphVO;
 import com.zeng.jstackinsight.api.response.ThreadStateVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,15 @@ public class ExportService {
         STATE_COLORS.put("TIMED_WAITING", "#8c8c8c");
         STATE_COLORS.put("TERMINATED", "#8c8c8c");
         STATE_COLORS.put("NEW", "#52c41a");
+    }
+
+    // 火焰图着色方案
+    private static final Map<String, String> FLAME_COLORS = new LinkedHashMap<>();
+    static {
+        FLAME_COLORS.put("jdk", "#1890ff");
+        FLAME_COLORS.put("spring", "#52c41a");
+        FLAME_COLORS.put("app", "#fa8c16");
+        FLAME_COLORS.put("other", "#bfbfbf");
     }
 
     // CPU 推测：已知的 Native I/O 等待方法（伪装 RUNNABLE）
@@ -115,6 +125,14 @@ public class ExportService {
         // CPU 推测分析
         List<CpuThreadResult> cpuResults = analyzeCpuThreads(fullThreads);
 
+        // 火焰图数据
+        FlameGraphVO flameGraph;
+        try {
+            flameGraph = reportService.getFlameGraph(uuid);
+        } catch (Exception e) {
+            flameGraph = null;
+        }
+
         StringBuilder html = new StringBuilder();
 
         html.append("<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n");
@@ -145,6 +163,11 @@ public class ExportService {
         // ========== CPU 推测 Tab ==========
         html.append("<div id=\"tab-cpu-inference\" class=\"tab-content\">\n");
         html.append(renderCpuInference(cpuResults));
+        html.append("</div>\n");
+
+        // ========== 火焰图 Tab ==========
+        html.append("<div id=\"tab-flame-graph\" class=\"tab-content\">\n");
+        html.append(renderFlameGraph(flameGraph));
         html.append("</div>\n");
 
         // ========== 线程列表 Tab ==========
@@ -228,6 +251,10 @@ public class ExportService {
             ".alert-info { background:#e6f4ff; border:1px solid #91caff; color:#0958d9; }\n" +
             ".group-bar { height:8px; border-radius:4px; background:#f0f0f0; margin:4px 0; overflow:hidden; }\n" +
             ".group-bar-fill { height:100%; border-radius:4px; background:#1677ff; transition:width 0.3s; }\n" +
+            ".flame-rect { cursor:pointer; transition:opacity 0.15s; }\n" +
+            ".flame-rect:hover { opacity:0.85; }\n" +
+            ".flame-tooltip { position:fixed; display:none; max-width:520px; background:rgba(30,30,30,0.95); color:#e8e8e8; padding:10px 14px; border-radius:6px; font-size:12px; line-height:1.6; font-family:'Fira Code','Consolas','Courier New',monospace; pointer-events:none; z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,0.3); word-break:break-all; }\n" +
+            ".flame-tooltip .tt-count { color:#fa8c16; font-weight:600; }\n" +
             "@media print { body { background:#fff; } .tabs { display:none; } .tab-content { display:block !important; padding:12px 0; } }\n";
     }
 
@@ -269,6 +296,46 @@ public class ExportService {
             "  document.querySelectorAll('#groups-tbody tr').forEach(function(row) {\n" +
             "    row.style.display = q ? (row.textContent.toLowerCase().includes(q) ? '' : 'none') : '';\n" +
             "  });\n" +
+            "}\n" +
+            "// 火焰图悬浮提示\n" +
+            "(function() {\n" +
+            "  var tip = document.getElementById('flame-tooltip');\n" +
+            "  if (!tip) return;\n" +
+            "  document.querySelectorAll('.flame-rect').forEach(function(rect) {\n" +
+            "    rect.addEventListener('mousemove', function(e) {\n" +
+            "      var sig = rect.getAttribute('data-sig') || '';\n" +
+            "      var count = rect.getAttribute('data-count') || '0';\n" +
+            "      tip.innerHTML = sig.replace(/\\n/g, '<br>') + '<br><span class=\"tt-count\">覆盖 ' + count + ' 个线程</span>';\n" +
+            "      tip.style.display = 'block';\n" +
+            "      var x = e.clientX + 14, y = e.clientY + 14;\n" +
+            "      var r = tip.getBoundingClientRect();\n" +
+            "      if (x + r.width > window.innerWidth - 10) x = e.clientX - r.width - 14;\n" +
+            "      if (y + r.height > window.innerHeight - 10) y = e.clientY - r.height - 14;\n" +
+            "      tip.style.left = x + 'px';\n" +
+            "      tip.style.top = y + 'px';\n" +
+            "    });\n" +
+            "    rect.addEventListener('mouseleave', function() {\n" +
+            "      tip.style.display = 'none';\n" +
+            "    });\n" +
+            "  });\n" +
+            "})();\n" +
+            "// 火焰图搜索高亮\n" +
+            "function filterFlame() {\n" +
+            "  var q = document.getElementById('flame-search').value.trim().toLowerCase();\n" +
+            "  document.querySelectorAll('.flame-rect').forEach(function(rect) {\n" +
+            "    var sig = (rect.getAttribute('data-sig') || '').toLowerCase();\n" +
+            "    if (!q) {\n" +
+            "      rect.style.opacity = '1';\n" +
+            "    } else if (sig.indexOf(q) !== -1) {\n" +
+            "      rect.style.opacity = '1';\n" +
+            "      rect.setAttribute('stroke', '#ff4d4f');\n" +
+            "      rect.setAttribute('stroke-width', '1.5');\n" +
+            "    } else {\n" +
+            "      rect.style.opacity = '0.15';\n" +
+            "      rect.removeAttribute('stroke');\n" +
+            "      rect.removeAttribute('stroke-width');\n" +
+            "    }\n" +
+            "  });\n" +
             "}\n";
     }
 
@@ -301,6 +368,7 @@ public class ExportService {
             "  <div class=\"tab active\" data-tab=\"overview\" onclick=\"switchTab('overview')\">概览</div>\n" +
             "  <div class=\"tab\" data-tab=\"deadlocks\" onclick=\"switchTab('deadlocks')\">死锁分析</div>\n" +
             "  <div class=\"tab\" data-tab=\"cpu-inference\" onclick=\"switchTab('cpu-inference')\">CPU 推测</div>\n" +
+            "  <div class=\"tab\" data-tab=\"flame-graph\" onclick=\"switchTab('flame-graph')\">火焰图</div>\n" +
             "  <div class=\"tab\" data-tab=\"threads\" onclick=\"switchTab('threads')\">线程列表</div>\n" +
             "  <div class=\"tab\" data-tab=\"stack-groups\" onclick=\"switchTab('stack-groups')\">相同堆栈</div>\n" +
             "</div>\n";
@@ -644,6 +712,163 @@ public class ExportService {
         sb.append("</div>\n");
         sb.append("</div>\n");
         return sb.toString();
+    }
+
+    // ================================================================
+    // 火焰图
+    // ================================================================
+
+    /**
+     * 渲染静态 SVG 火焰图（icicle chart）。
+     * 复现前端 d3.partition 布局：宽度正比于 value，深度对应 Y 轴。
+     */
+    private String renderFlameGraph(FlameGraphVO flameGraph) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div class=\"card\">\n<h2>火焰图</h2>\n");
+
+        if (flameGraph == null || flameGraph.getRoot() == null || flameGraph.getRoot().getChildren() == null
+                || flameGraph.getRoot().getChildren().isEmpty()) {
+            sb.append("<div class=\"alert alert-info\">无火焰图数据</div>\n");
+            sb.append("</div>\n");
+            return sb.toString();
+        }
+
+        // 搜索框 + 图例
+        sb.append("<div style=\"display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;\">\n");
+        sb.append("  <input class=\"search-box\" id=\"flame-search\" placeholder=\"搜索栈帧，高亮匹配...\" oninput=\"filterFlame()\" style=\"margin-bottom:0;\">\n");
+        sb.append("  <div style=\"display:flex;gap:16px;flex-wrap:wrap;\">\n");
+        for (Map.Entry<String, String> e : FLAME_COLORS.entrySet()) {
+            sb.append("  <span style=\"display:flex;align-items:center;gap:4px;font-size:12px;\">")
+              .append("<span style=\"width:12px;height:12px;border-radius:2px;background:").append(e.getValue()).append(";display:inline-block;\"></span> ")
+              .append(legendLabel(e.getKey())).append("</span>\n");
+        }
+        sb.append("  </div>\n");
+        sb.append("</div>\n");
+
+        // 构建 SVG
+        FlameGraphVO.FlameNode root = flameGraph.getRoot();
+
+        // 计算最大深度，决定行高和总高度
+        int maxDepth = calcMaxDepth(root, 0);
+        int rowHeight = Math.max(18, Math.min(36, 600 / (maxDepth + 1)));
+        int width = 1200; // viewBox 逻辑宽度，实际随容器缩放
+        int height = rowHeight * (maxDepth + 1);
+
+        // 计算根节点的总 value（叶子节点 value 求和）
+        int totalValue = calcTotalValue(root);
+
+        sb.append("<div id=\"flame-tooltip\" class=\"flame-tooltip\"></div>\n");
+        sb.append("<div style=\"overflow-x:auto;\">\n");
+        sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100%\" height=\"auto\"")
+          .append(" viewBox=\"0 0 ").append(width).append(" ").append(height)
+          .append("\" preserveAspectRatio=\"xMinYMin meet\"")
+          .append(" style=\"display:block;background:#fafafa;border-radius:6px;min-width:600px;\">\n");
+
+        // 递归绘制（跳过虚拟根节点 depth=0，子节点从 depth=1 开始，与前端 d3.partition 一致）
+        if (totalValue > 0) {
+            renderFlameNode(sb, root, 1, 0, width, rowHeight, totalValue);
+        }
+
+        sb.append("</svg>\n");
+        sb.append("</div>\n");
+        sb.append("</div>\n");
+        return sb.toString();
+    }
+
+    private String legendLabel(String key) {
+        switch (key) {
+            case "jdk": return "JDK";
+            case "spring": return "Spring";
+            case "app": return "应用代码";
+            default: return "其他";
+        }
+    }
+
+    private int calcMaxDepth(FlameGraphVO.FlameNode node, int depth) {
+        if (node == null) return depth;
+        if (node.getChildren() == null || node.getChildren().isEmpty()) {
+            return depth;
+        }
+        int max = depth;
+        for (FlameGraphVO.FlameNode child : node.getChildren()) {
+            max = Math.max(max, calcMaxDepth(child, depth + 1));
+        }
+        return max;
+    }
+
+    /**
+     * 计算节点的总 value：叶子节点用自身 value，父节点为子节点之和。
+     */
+    private int calcTotalValue(FlameGraphVO.FlameNode node) {
+        if (node == null) return 0;
+        if (node.getChildren() == null || node.getChildren().isEmpty()) {
+            return node.getValue();
+        }
+        int sum = 0;
+        for (FlameGraphVO.FlameNode child : node.getChildren()) {
+            sum += calcTotalValue(child);
+        }
+        return sum > 0 ? sum : node.getValue();
+    }
+
+    /**
+     * 递归绘制火焰图节点。depth 是当前节点在树中的深度，x0 是起始 x 坐标，
+     * totalWidth 是父节点分配的宽度。子节点按 value 比例分配父节点的宽度。
+     */
+    private void renderFlameNode(StringBuilder sb, FlameGraphVO.FlameNode node,
+                                 int depth, double x0, double totalWidth, int rowHeight, int totalValue) {
+        List<FlameGraphVO.FlameNode> children = node.getChildren();
+        if (children == null || children.isEmpty()) {
+            return;
+        }
+
+        // 按 value 降序排序，与前端 d3 root.sort 一致（大块在左）
+        List<FlameGraphVO.FlameNode> sortedChildren = new ArrayList<>(children);
+        sortedChildren.sort((a, b) -> Integer.compare(calcTotalValue(b), calcTotalValue(a)));
+
+        double y = depth * rowHeight;
+        double cursor = x0;
+        for (FlameGraphVO.FlameNode child : sortedChildren) {
+            int childValue = calcTotalValue(child);
+            double w = totalValue > 0 ? totalWidth * childValue / totalValue : 0;
+            if (w < 1) w = 1;
+
+            String color = FLAME_COLORS.getOrDefault(child.getColorCategory(), FLAME_COLORS.get("other"));
+
+            // 矩形：用 data 属性存储签名，JS 悬浮显示 tooltip
+            String sig = child.getFullSignature() != null ? child.getFullSignature()
+                    : (child.getName() != null ? child.getName() : "");
+            sb.append("<rect class=\"flame-rect\" x=\"").append(fmt(cursor)).append("\" y=\"").append(fmt(y))
+              .append("\" width=\"").append(fmt(Math.max(0, w - 1)))
+              .append("\" height=\"").append(Math.max(0, rowHeight - 1))
+              .append("\" fill=\"").append(color)
+              .append("\" rx=\"2\" ry=\"2\" data-sig=\"").append(escapeAttr(sig))
+              .append("\" data-count=\"").append(childValue).append("\" />\n");
+
+            // 文字标签（宽度足够时显示）
+            String name = child.getName() != null ? child.getName() : "";
+            int maxLen = (int) (w / 6);
+            if (w >= 30 && maxLen > 0) {
+                String label = name.length() > maxLen ? name.substring(0, Math.max(0, maxLen - 2)) + ".." : name;
+                double textY = y + rowHeight / 2.0;
+                sb.append("<text x=\"").append(fmt(cursor + 4)).append("\" y=\"").append(fmt(textY))
+                  .append("\" dy=\"0.35em\" fill=\"#fff\" font-size=\"").append(Math.min(12, rowHeight - 6))
+                  .append("\" font-weight=\"500\">").append(escapeHtml(label)).append("</text>\n");
+            }
+
+            // 递归子节点
+            renderFlameNode(sb, child, depth + 1, cursor, w, rowHeight, childValue);
+
+            cursor += w;
+        }
+    }
+
+    private String fmt(double d) {
+        return String.format(Locale.US, "%.1f", d);
+    }
+
+    private String escapeAttr(String s) {
+        return escapeHtml(s).replace("'", "&#39;");
     }
 
     // ================================================================
