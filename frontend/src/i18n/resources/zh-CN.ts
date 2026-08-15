@@ -86,6 +86,8 @@ export const zhCN = {
     loading: '加载中...',
     share: '分享',
     shareCopied: '链接已复制！有效至 {time}',
+    exportTooFrequent: '操作过于频繁，请稍后再试',
+    exportLimitReached: '导出次数已达上限（10 次），请刷新页面后重试',
   },
 
   overview: {

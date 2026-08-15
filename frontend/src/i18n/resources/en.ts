@@ -86,6 +86,8 @@ export const en = {
     loading: 'Loading...',
     share: 'Share',
     shareCopied: 'Link copied! Expires at {time}',
+    exportTooFrequent: 'Too many requests, please try again later',
+    exportLimitReached: 'Export limit reached (10 times), please refresh the page to retry',
   },
 
   overview: {

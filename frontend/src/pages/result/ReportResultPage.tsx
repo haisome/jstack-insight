@@ -180,6 +180,41 @@ const ReportResultPage: React.FC = () => {
   const lastShareTimeRef = useRef(0);
   const cachedExpiresAtRef = useRef(0);
 
+  // 导出防抖：1 秒内仅允许 1 次，累计超过 10 次禁止
+  const lastExportTimeRef = useRef(0);
+  const exportCountRef = useRef(0);
+  const EXPORT_MAX_COUNT = 10;
+  const EXPORT_INTERVAL_MS = 1000;
+
+  const handleExport = () => {
+    if (!uuid) return;
+
+    // 累计次数限制
+    if (exportCountRef.current >= EXPORT_MAX_COUNT) {
+      message.warning(t('result.exportLimitReached'));
+      return;
+    }
+
+    // 1 秒防抖
+    const now = Date.now();
+    if (now - lastExportTimeRef.current < EXPORT_INTERVAL_MS) {
+      message.info(t('result.exportTooFrequent'));
+      return;
+    }
+
+    lastExportTimeRef.current = now;
+    exportCountRef.current += 1;
+
+    // 触发下载（通过隐藏的 <a> 或直接 window.open）
+    const url = getExportHtmlUrl(uuid);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleShare = async () => {
     if (!uuid) return;
     const url = `${window.location.origin}/report/${uuid}`;
@@ -360,7 +395,7 @@ const ReportResultPage: React.FC = () => {
               </Button>
             <Button
                 icon={<DownloadOutlined />}
-                href={uuid ? getExportHtmlUrl(uuid) : '#'}
+                onClick={handleExport}
                 type="text"
                 size="small"
                 style={{ color: '#666', fontSize: 13 }}
