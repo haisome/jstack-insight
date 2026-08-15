@@ -1,0 +1,39 @@
+<div th:fragment="overview" xmlns:th="http://www.thymeleaf.org">
+    <div class="card">
+        <h2>报告概览</h2>
+        <div class="stats">
+            <div class="stat info">
+                <div class="num" th:text="${threadState.totalThreads}"></div>
+                <div class="label">线程总数</div>
+            </div>
+            <div class="stat" th:classappend="${overview.deadlockCount > 0 ? 'danger' : 'info'}">
+                <div class="num" th:text="${overview.deadlockCount}"></div>
+                <div class="label">死锁链路</div>
+            </div>
+            <div class="stat" th:classappend="${overview.blockedWaiting > 0 ? 'warning' : 'info'}">
+                <div class="num" th:text="${overview.blockedWaiting}"></div>
+                <div class="label">BLOCKED + WAITING</div>
+            </div>
+        </div>
+
+        <div class="alert alert-danger" th:if="${deadlocks.detected}">
+            <strong>警告：</strong>检测到 <span th:text="${overview.deadlockCount}"></span> 条死锁链路，
+            涉及 <span th:text="${overview.deadlockThreadCount}"></span> 个线程
+        </div>
+
+        <h3 style="font-size:14px;margin-bottom:12px;">线程状态分布</h3>
+        <div class="state-bar" th:if="${overview.totalThreads > 0}">
+            <div class="state-seg" th:each="seg : ${overview.stateSegments}"
+                 th:style="${'width:' + seg.pct + '%;background:' + seg.color}"
+                 th:title="${seg.state + ': ' + seg.count}"
+                 th:text="${seg.showLabel ? seg.state : ''}"></div>
+        </div>
+        <div class="state-legend" th:if="${overview.totalThreads > 0}">
+            <div class="state-legend-item" th:each="seg : ${overview.stateSegments}">
+                <div class="state-dot" th:style="${'background:' + seg.color}"></div>
+                <span th:text="${seg.state + ': ' + seg.count}"></span>
+            </div>
+        </div>
+        <div class="alert alert-info" th:if="${overview.totalThreads == 0}">暂无线程状态数据</div>
+    </div>
+</div>

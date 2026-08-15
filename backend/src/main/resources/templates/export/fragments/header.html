@@ -1,0 +1,13 @@
+<div th:fragment="header" xmlns:th="http://www.thymeleaf.org">
+    <div class="header">
+        <h1><span class="logo">🔍</span> JStack Insight</h1>
+        <div class="meta">
+            <span class="meta-filename" th:text="${summary.filename}"></span>
+            <span class="meta-sep">·</span>
+            <span th:text="${summary.totalThreads}"></span> 线程
+            <span class="badge badge-deadlock" th:if="${summary.hasDeadlock}">死锁</span>
+            <span class="meta-sep" th:if="${summary.hasDeadlock}">·</span>
+            <span class="meta-time" th:text="${'导出时间 ' + exportTime}"></span>
+        </div>
+    </div>
+</div>

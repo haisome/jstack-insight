@@ -1,0 +1,10 @@
+<div th:fragment="tabs" xmlns:th="http://www.thymeleaf.org">
+    <div class="tabs">
+        <div class="tab active" data-tab="overview" onclick="switchTab('overview')">概览</div>
+        <div class="tab" data-tab="deadlocks" onclick="switchTab('deadlocks')">死锁分析</div>
+        <div class="tab" data-tab="cpu-inference" onclick="switchTab('cpu-inference')">CPU 推测</div>
+        <div class="tab" data-tab="flame-graph" onclick="switchTab('flame-graph')">火焰图</div>
+        <div class="tab" data-tab="threads" onclick="switchTab('threads')">线程列表</div>
+        <div class="tab" data-tab="stack-groups" onclick="switchTab('stack-groups')">相同堆栈</div>
+    </div>
+</div>

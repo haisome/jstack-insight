@@ -1,0 +1,37 @@
+<div th:fragment="flame" xmlns:th="http://www.thymeleaf.org">
+    <div class="card">
+        <h2>火焰图</h2>
+
+        <div class="alert alert-info" th:if="${flame.isEmpty}">无火焰图数据</div>
+
+        <th:block th:if="${!flame.isEmpty}">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+                <input class="search-box" id="flame-search" placeholder="搜索栈帧，高亮匹配..." oninput="filterFlame()" style="margin-bottom:0;">
+                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                    <span th:each="l : ${flame.legend}" style="display:flex;align-items:center;gap:4px;font-size:12px;">
+                        <span th:style="${'width:12px;height:12px;border-radius:2px;background:' + l.color + ';display:inline-block;'}"></span>
+                        <span th:text="${l.label}"></span>
+                    </span>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#666;cursor:pointer;user-select:none;">
+                        <input type="checkbox" id="flame-label-toggle" onchange="toggleFlameLabels()">
+                        显示栈名
+                    </label>
+                </div>
+            </div>
+
+            <div id="flame-tooltip" class="flame-tooltip"></div>
+            <div style="overflow-x:auto;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="auto"
+                     th:attr="viewBox=${'0 0 ' + flame.width + ' ' + flame.height}"
+                     preserveAspectRatio="xMinYMin meet"
+                     style="display:block;background:#fafafa;border-radius:6px;min-width:600px;">
+                    <rect class="flame-rect" th:each="n : ${flame.nodes}"
+                          th:attr="x=${n.x},y=${n.y},width=${n.width},height=${n.height},fill=${n.color},rx='2',ry='2',data-sig=${n.sig},data-count=${n.count}"></rect>
+                    <text class="flame-label" th:each="n : ${flame.labels}"
+                          th:attr="x=${n.x},y=${n.y},fill='#fff',font-size=${n.fontSize}"
+                          dy="0.35em" font-weight="500" pointer-events="none" th:text="${n.text}"></text>
+                </svg>
+            </div>
+        </th:block>
+    </div>
+</div>

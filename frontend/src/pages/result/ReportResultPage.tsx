@@ -365,7 +365,7 @@ const ReportResultPage: React.FC = () => {
                 size="small"
                 style={{ color: '#666', fontSize: 13 }}
               >
-                {t('common.download')}
+                {t('common.export')}
               </Button>
             <LanguageSwitcher mode="dropdown" size="small" />
           </Space>

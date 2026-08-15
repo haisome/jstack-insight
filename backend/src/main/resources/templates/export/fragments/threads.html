@@ -1,0 +1,40 @@
+<div th:fragment="threads" xmlns:th="http://www.thymeleaf.org">
+    <div class="card">
+        <h2>线程列表 (<span th:text="${threadState.totalThreads}"></span>)</h2>
+        <input class="search-box" id="thread-search" placeholder="搜索线程名/状态/栈帧..." oninput="filterThreads()">
+
+        <table>
+            <thead>
+            <tr>
+                <th></th><th>线程名</th><th>nid</th><th>状态</th><th>等待锁</th><th>栈深</th>
+            </tr>
+            </thead>
+                <tbody id="threads-tbody">
+                <th:block th:each="row, rowStat : ${threads.rows}">
+                    <tr class="row-main" th:classappend="${row.rowClass}">
+                        <td>
+                            <span class="expand-btn" th:if="${row.hasStack}"
+                                  th:attr="data-idx=${rowStat.index}" onclick="toggleDetail(this, this.getAttribute('data-idx'))">▶ 展开</span>
+                        </td>
+                        <td>
+                            <span th:if="${row.inDeadlock}">🐛 </span>
+                            <span th:if="${!row.inDeadlock and (row.finalizerTrapped or row.throwingException)}">⚠ </span>
+                            <code th:text="${row.name}"></code>
+                        </td>
+                        <td style="font-family:monospace;font-size:12px;color:#999;" th:text="${row.nid != null ? row.nid : '-'}"></td>
+                        <td>
+                            <span class="tag" th:style="${'background:' + row.stateColor + ';color:#fff;'}" th:text="${row.state}"></span>
+                        </td>
+                        <td style="font-family:monospace;font-size:11px;" th:text="${row.waitingOnLock != null ? row.waitingOnLock : '-'}"></td>
+                        <td th:text="${row.stackDepth}"></td>
+                    </tr>
+                    <tr class="detail-row" th:if="${row.hasStack}" th:attr="id=${'detail-' + rowStat.index}">
+                        <td colspan="6">
+                            <div class="stack-pre" th:utext="${row.stackHtml}"></div>
+                        </td>
+                    </tr>
+                </th:block>
+            </tbody>
+        </table>
+    </div>
+</div>

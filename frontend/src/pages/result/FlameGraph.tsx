@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import * as d3 from 'd3';
-import { Card, Typography, Empty, Popover, Input, message } from 'antd';
+import { Card, Typography, Empty, Popover, Input, message, Switch } from 'antd';
 import { QuestionCircleOutlined, SearchOutlined, CopyOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { FlameGraphVO, FlameNode } from '../../types';
@@ -37,7 +37,7 @@ interface TooltipInfo {
  * D3 火焰图组件 — 纯 SVG icicle chart 实现
  * 使用 d3.partition 布局，每个矩形代表一个栈帧，宽度正比于覆盖线程数
  */
-const D3FlameChart: React.FC<{ data: FlameNode; searchTerm?: string }> = ({ data, searchTerm }) => {
+const D3FlameChart: React.FC<{ data: FlameNode; searchTerm?: string; showLabels?: boolean }> = ({ data, searchTerm, showLabels }) => {
   const { t } = useTranslation();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -157,24 +157,26 @@ const D3FlameChart: React.FC<{ data: FlameNode; searchTerm?: string }> = ({ data
         });
       });
 
-    // 文字标签（仅在空间足够时显示）
-    cell.append<SVGTextElement>('text')
-      .attr('x', (d) => d.x0 + 4)
-      .attr('y', (d) => (d.y0 + d.y1) / 2)
-      .attr('dy', '0.35em')
-      .text((d) => {
-        const w = d.x1 - d.x0;
-        if (w < 30) return '';
-        const name = d.data.name || '';
-        const maxLen = Math.floor(w / 6);
-        return name.length > maxLen ? name.substring(0, maxLen - 2) + '..' : name;
-      })
-      .attr('fill', '#fff')
-      .attr('font-size', Math.min(12, rowHeight - 6))
-      .attr('font-weight', 500)
-      .attr('pointer-events', 'none');
+    // 文字标签（仅在空间足够且开启「显示栈名」时显示）
+    if (showLabels) {
+      cell.append<SVGTextElement>('text')
+        .attr('x', (d) => d.x0 + 4)
+        .attr('y', (d) => (d.y1 - d.y0) / 2)
+        .attr('dy', '0.35em')
+        .text((d) => {
+          const w = d.x1 - d.x0;
+          if (w < 30) return '';
+          const name = d.data.name || '';
+          const maxLen = Math.floor(w / 6);
+          return name.length > maxLen ? name.substring(0, maxLen - 2) + '..' : name;
+        })
+        .attr('fill', '#fff')
+        .attr('font-size', Math.min(12, rowHeight - 6))
+        .attr('font-weight', 500)
+        .attr('pointer-events', 'none');
+    }
 
-  }, [data, searchTerm]);
+  }, [data, searchTerm, showLabels]);
 
   useEffect(() => {
     renderChart();
@@ -261,6 +263,7 @@ const D3FlameChart: React.FC<{ data: FlameNode; searchTerm?: string }> = ({ data
 const FlameGraph: React.FC<FlameGraphProps> = ({ flameGraph }) => {
   const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
+  const [showLabels, setShowLabels] = useState(false);
 
   // 计算搜索匹配数量
   const matchCount = useMemo(() => {
@@ -423,11 +426,15 @@ const FlameGraph: React.FC<FlameGraphProps> = ({ flameGraph }) => {
                 {t('flameGraph.matchCount', { count: matchCount })}
               </span>
             )}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+              <Switch size="small" checked={showLabels} onChange={setShowLabels} />
+              <span style={{ color: '#666', fontSize: 12 }}>{t('flameGraph.showLabels')}</span>
+            </span>
         </div>
       </div>
 
       {/* 图表区域 */}
-      <D3FlameChart data={flameGraph.root} searchTerm={searchTerm} />
+      <D3FlameChart data={flameGraph.root} searchTerm={searchTerm} showLabels={showLabels} />
     </Card>
   );
 };

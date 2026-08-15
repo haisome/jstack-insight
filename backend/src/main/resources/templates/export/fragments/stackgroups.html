@@ -1,0 +1,30 @@
+<div th:fragment="stackgroups" xmlns:th="http://www.thymeleaf.org">
+    <div class="card">
+        <h2>相同堆栈分析</h2>
+        <input class="search-box" id="group-search" placeholder="搜索栈帧..." oninput="filterGroups()">
+
+        <table>
+            <thead>
+            <tr>
+                <th>数量</th><th>占比</th><th>首帧</th><th>状态分布</th><th>示例线程</th>
+            </tr>
+            </thead>
+                <tbody id="groups-tbody">
+                <tr th:each="g : ${stackGroups}">
+                    <td style="font-weight:700;" th:style="${'color:' + g.countColor}" th:text="${g.count}"></td>
+                    <td>
+                        <div class="group-bar"><div class="group-bar-fill" th:style="${'width:' + g.pct + '%'}"></div></div>
+                        <span th:text="${g.pct + '%'}"></span>
+                    </td>
+                    <td style="font-family:monospace;font-size:12px;color:#1677ff;" th:text="${g.firstFrame}"></td>
+                    <td>
+                        <span class="tag" th:each="st : ${g.stateTags}"
+                              th:style="${'background:' + st.color + ';color:#fff;margin-right:4px;'}"
+                              th:text="${st.state + ' ' + st.count}"></span>
+                    </td>
+                    <td style="font-family:monospace;font-size:11px;color:#666;" th:text="${g.sampleNames}"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>

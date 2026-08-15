@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>JStack Insight - <span th:text="${summary.filename}"></span></title>
+    <style th:utext="${inlineCss}"></style>
+</head>
+<body>
+    <th:block th:replace="~{export/fragments/header :: header}"></th:block>
+    <th:block th:replace="~{export/fragments/tabs :: tabs}"></th:block>
+
+    <div id="tab-overview" class="tab-content active">
+        <th:block th:replace="~{export/fragments/overview :: overview}"></th:block>
+    </div>
+
+    <div id="tab-deadlocks" class="tab-content">
+        <th:block th:replace="~{export/fragments/deadlocks :: deadlocks}"></th:block>
+    </div>
+
+    <div id="tab-cpu-inference" class="tab-content">
+        <th:block th:replace="~{export/fragments/cpu :: cpu}"></th:block>
+    </div>
+
+    <div id="tab-flame-graph" class="tab-content">
+        <th:block th:replace="~{export/fragments/flame :: flame}"></th:block>
+    </div>
+
+    <div id="tab-threads" class="tab-content">
+        <th:block th:replace="~{export/fragments/threads :: threads}"></th:block>
+    </div>
+
+    <div id="tab-stack-groups" class="tab-content">
+        <th:block th:replace="~{export/fragments/stackgroups :: stackgroups}"></th:block>
+    </div>
+
+    <script th:utext="${inlineJs}"></script>
+</body>
+</html>

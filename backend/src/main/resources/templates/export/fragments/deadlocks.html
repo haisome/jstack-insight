@@ -1,0 +1,25 @@
+<div th:fragment="deadlocks" xmlns:th="http://www.thymeleaf.org">
+    <div class="card">
+        <h2>死锁检测</h2>
+
+        <div class="alert alert-success" th:if="${!deadlocks.detected}">未检测到死锁 ✓</div>
+
+        <th:block th:if="${deadlocks.detected}">
+            <div class="alert alert-danger">检测到 <strong th:text="${deadlocks.chains.size()}"></strong> 条死锁链路</div>
+
+            <div class="chain-card" th:each="chain, chainStat : ${deadlocks.chains}">
+                <h3 style="font-size:14px;margin-bottom:10px;" th:text="'死锁链路 #' + ${chainStat.index + 1}"></h3>
+                <div class="chain-flow">
+                    <th:block th:each="node, nodeStat : ${chain}">
+                        <span class="chain-arrow" th:if="${nodeStat.index > 0}">→</span>
+                        <span class="chain-node" th:text="${node}"></span>
+                    </th:block>
+                    <span class="chain-arrow">↻</span>
+                </div>
+                <p style="font-size:13px;color:#666;"
+                   th:if="${chainStat.index < deadlocks.descriptions.size()}"
+                   th:text="${deadlocks.descriptions[chainStat.index]}"></p>
+            </div>
+        </th:block>
+    </div>
+</div>
