@@ -106,6 +106,42 @@ export interface TopCpuVO {
   threads: TopCpuThreadInfo[];
 }
 
+// ========== CPU 线程推测（后端统一计算，与导出报告同源） ==========
+
+/**
+ * cpu_consuming = 疑似 CPU 消耗（栈顶为 Java 方法）
+ * io_wait       = I/O 等待（栈顶为 Native 阻塞点）
+ * native        = 栈顶为 Native 方法但非已知阻塞点，无法认定为 CPU 消耗
+ * gc            = GC / JVM 系统线程
+ * no_stack      = 无调用栈，无法判断
+ */
+export type CpuInferenceCategory =
+  | 'cpu_consuming'
+  | 'io_wait'
+  | 'native'
+  | 'gc'
+  | 'no_stack';
+
+export interface CpuInferenceRow {
+  category: CpuInferenceCategory;
+  /** 线程详情（含完整调用栈） */
+  thread: ThreadSummary;
+  reasons: string[];
+  stackDepth: number;
+  topFrame: string;
+}
+
+export interface CpuInferenceVO {
+  /** RUNNABLE 线程总数 */
+  total: number;
+  cpuCount: number;
+  ioCount: number;
+  gcCount: number;
+  nativeCount: number;
+  noStackCount: number;
+  rows: CpuInferenceRow[];
+}
+
 // ========== 主响应体 ==========
 
 export interface AnalysisResultVO {

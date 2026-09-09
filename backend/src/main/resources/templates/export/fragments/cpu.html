@@ -2,6 +2,12 @@
     <div class="card">
         <h2>CPU 线程推测</h2>
 
+        <p style="font-size:12px;color:#8c8c8c;margin:0 0 12px;line-height:1.8;">
+            判定依据 fastThread 的 Athlete 模式：线程处于 RUNNABLE 不代表真在消耗 CPU。
+            JVM 无法感知 Native 方法内部状态，阻塞在 socket 读写等 Native 调用上时仍被标记为 RUNNABLE，
+            因此本分析<b>只看栈顶帧</b>（线程此刻正在执行的位置）来区分「真的在跑」与「伪装 RUNNABLE」。
+        </p>
+
         <div class="stats">
             <div class="stat info">
                 <div class="num" th:text="${cpu.total}"></div>
@@ -16,13 +22,24 @@
                 <div class="label">IO 等待</div>
             </div>
             <div class="stat info">
+                <div class="num" th:text="${cpu.nativeCount}"></div>
+                <div class="label">Native 未知</div>
+            </div>
+            <div class="stat info">
                 <div class="num" th:text="${cpu.gcCount}"></div>
                 <div class="label">GC 系统线程</div>
+            </div>
+            <div class="stat info">
+                <div class="num" th:text="${cpu.noStackCount}"></div>
+                <div class="label">无调用栈</div>
             </div>
         </div>
 
         <div class="alert alert-danger" th:if="${cpu.cpuCount > 0}">
-            ⚠ 检测到 <span th:text="${cpu.cpuCount}"></span> 个疑似 CPU 消耗线程，建议进一步使用 top -H 进行精准采集
+            ⚠ 检测到 <span th:text="${cpu.cpuCount}"></span> 个疑似 CPU 消耗线程（栈顶为 Java 方法，确实在执行代码），建议进一步使用 top -H 进行精准采集
+        </div>
+        <div class="alert alert-info" th:if="${cpu.cpuCount == 0 and cpu.total > 0}">
+            ✓ 未发现疑似 CPU 消耗线程：所有 RUNNABLE 线程均处于 I/O 等待、Native 调用或为 JVM 系统线程
         </div>
 
         <table>
@@ -33,7 +50,7 @@
             </thead>
             <tbody>
             <tr th:each="r : ${cpu.results}"
-                th:style="${'background:' + r.rowColor + ';' + (r.category != 'CPU_CONSUMING' ? 'opacity:0.6;' : '')}">
+                th:style="${'background:' + r.rowColor + ';' + (r.category != 'cpu_consuming' ? 'opacity:0.6;' : '')}">
                 <td style="white-space:nowrap;">
                     <span class="tag" th:style="${'background:' + r.catBg + ';color:#fff;'}" th:text="${r.catLabel}"></span>
                 </td>

@@ -423,6 +423,7 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
               cpuTopFileList={cpuTopFileList}
               setCpuTopFileList={setCpuTopFileList}
               view="inference"
+              cpuInference={null}
             />
           </div>
           <div style={panelStyle('cpu-precise')}>
@@ -434,6 +435,7 @@ const ResultPage: React.FC<ResultPageProps> = ({ result, jstackRawFile, onBack }
               cpuTopFileList={cpuTopFileList}
               setCpuTopFileList={setCpuTopFileList}
               view="precise"
+              cpuInference={null}
             />
           </div>
         </Content>

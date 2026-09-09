@@ -14,7 +14,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import type { UploadFile, UploadProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import type { ThreadSummary, TopCpuVO, TopCpuThreadInfo } from '../../types';
+import type { ThreadSummary, TopCpuVO, TopCpuThreadInfo, CpuInferenceVO } from '../../types';
 import { uploadTopForCpuByReport } from '../../services/api';
 
 const { Title, Text } = Typography;
@@ -30,6 +30,14 @@ interface CpuAnalysisProps {
   setCpuTopFileList: (v: UploadFile[]) => void;
   /** 视图模式：inference=CPU线程推测，precise=精准CPU采集 */
   view?: 'inference' | 'precise';
+  /**
+   * 后端统一计算的 CPU 推测结果（inference 视图数据源）。
+   *
+   * 必须在后端计算：线程摘要 threads 不含 stackTrace，
+   * 前端拿不到调用栈就无法识别 Native I/O 等待，会把所有 RUNNABLE 线程误判为 CPU 消耗，
+   * 与导出的 HTML 报告数量对不上。
+   */
+  cpuInference: CpuInferenceVO | null;
 }
 
 // ========== 栈跟踪还原辅助（复用 Threads.tsx 的 buildRawStackLines） ==========
@@ -79,42 +87,17 @@ function buildRawStackLines(thread: ThreadSummary): string[] {
   return lines;
 }
 
-// ========== 已知的 Native I/O 等待方法（伪装 RUNNABLE） ==========
-const IO_WAIT_NATIVE_PATTERNS: RegExp[] = [
-  /socketRead0/i,
-  /socketWrite0/i,
-  /socketAccept/i,
-  /receive0/i,
-  /send0/i,
-  /epollWait/i,
-  /poll0/i,
-  /pollOne/i,
-  /waitForSignal/i,
-  /socketConnect/i,
-  /read0/i,
-  /write0/i,
-  /available/i,
-  /InputStream\.read/i,
-  /FileChannelImpl\.read/i,
-  /FileChannelImpl\.write/i,
-];
+// ========== 已知的 Native I/O 等待 / GC 线程识别 ==========
+// 该启发式规则已统一收敛到后端 CpuInferenceAnalyzer，前端不再重复实现，
+// 以保证页面展示与导出的 HTML 报告结果完全一致。
 
-// ========== 已知的 GC / 系统级 Native RUNNABLE（不一定是业务 CPU） ==========
-const GC_NATIVE_PATTERNS: RegExp[] = [
-  /GC\s/,
-  /GC task/,
-  /VM Thread/,
-  /CompilerThread/,
-  /ConcurrentGC/,
-  /G1/i,
-  /Paralle/i,
-  /CMS/i,
-  /ZGC/i,
-  /Shenandoah/i,
-];
-
-/** 线程分类 */
-type ThreadCategory = 'cpu_consuming' | 'io_wait' | 'gc';
+/**
+ * 线程分类
+ *
+ * 判定依据 fastThread 的 Athlete 模式：RUNNABLE ≠ 真在消耗 CPU。
+ * JVM 无法感知 Native 方法内部状态，因此只有栈顶为 Java 方法时才认定为 CPU 消耗。
+ */
+type ThreadCategory = 'cpu_consuming' | 'io_wait' | 'native' | 'gc' | 'no_stack';
 
 interface CpuThreadResult {
   thread: ThreadSummary;
@@ -146,11 +129,23 @@ const CATEGORY_CONFIG: Record<ThreadCategory, {
     tagColor: 'default',
     icon: <CheckCircleOutlined />,
   },
+  native: {
+    color: '#722ed1',
+    bg: '#f9f0ff',
+    tagColor: 'purple',
+    icon: <ExclamationCircleOutlined />,
+  },
   gc: {
     color: '#13c2c2',
     bg: '#e6fffb',
     tagColor: 'cyan',
     icon: <WarningOutlined />,
+  },
+  no_stack: {
+    color: '#595959',
+    bg: '#fafafa',
+    tagColor: 'default',
+    icon: <InfoCircleOutlined />,
   },
 };
 
@@ -626,6 +621,7 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
   cpuTopFileList,
   setCpuTopFileList,
   view = 'inference',
+  cpuInference,
 }) => {
   const { t } = useTranslation();
   // ========== 状态管理 ==========
@@ -636,96 +632,38 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
     switch (cat) {
       case 'cpu_consuming': return t('cpuAnalysis.categoryCpu');
       case 'io_wait': return t('cpuAnalysis.categoryIo');
+      case 'native': return t('cpuAnalysis.categoryNative');
       case 'gc': return t('cpuAnalysis.categoryGc');
+      case 'no_stack': return t('cpuAnalysis.categoryNoStack');
     }
   };
   const catDesc = (cat: ThreadCategory): string => {
     switch (cat) {
       case 'cpu_consuming': return t('cpuAnalysis.categoryCpuDesc');
       case 'io_wait': return t('cpuAnalysis.categoryIoDesc');
+      case 'native': return t('cpuAnalysis.categoryNativeDesc');
       case 'gc': return t('cpuAnalysis.categoryGcDesc');
+      case 'no_stack': return t('cpuAnalysis.categoryNoStackDesc');
     }
   };
 
-  // ========== 核心评估逻辑 ==========
+  // ========== 核心评估逻辑（结果来自后端，前端只做展示） ==========
   const evalResults = useMemo((): CpuThreadResult[] => {
-    const runnable = threads.filter((t) => t.state === 'RUNNABLE');
-    if (runnable.length === 0) return [];
-
-    // 统计相同栈帧出现的线程数（用于瓶颈检测）
-    const stackSigMap = new Map<string, ThreadSummary[]>();
-    runnable.forEach((t) => {
-      const sig = t.stackTrace?.length > 0 ? t.stackTrace[0] : '';
-      if (!sig) return;
-      const list = stackSigMap.get(sig) || [];
-      list.push(t);
-      stackSigMap.set(sig, list);
-    });
-
-    return runnable.map((thread) => {
-      const reasons: string[] = [];
-      let category: ThreadCategory = 'cpu_consuming';
-      const stack = thread.stackTrace || [];
-      const topFrame = stack[0] || t('cpuAnalysis.noFrame');
-      const stackDepth = stack.length;
-
-      // --- 检查 Native I/O 等待 ---
-      const isIoWait = stack.some((frame) =>
-        IO_WAIT_NATIVE_PATTERNS.some((pat) => pat.test(frame)),
-      );
-      if (isIoWait) {
-        category = 'io_wait';
-        const matchedFrame = stack.find((f) =>
-          IO_WAIT_NATIVE_PATTERNS.some((pat) => pat.test(f)),
-        );
-        reasons.push(t('cpuAnalysis.reasonIoWait', { frame: (matchedFrame?.substring(0, 60) || '') }));
-        return { thread, category, reasons, stackDepth, topFrame };
-      }
-
-      // --- 检查 GC / 系统线程 ---
-      const isGcThread = GC_NATIVE_PATTERNS.some((pat) => pat.test(thread.name));
-      if (isGcThread) {
-        category = 'gc';
-        reasons.push(t('cpuAnalysis.reasonGcThread'));
-        return { thread, category, reasons, stackDepth, topFrame };
-      }
-
-      // --- 检查异常模式（死循环、超深栈、共享瓶颈） ---
-      // 这些是额外的诊断信息，但不改变分类（仍然是 cpu_consuming）
-      if (stack.length > 3) {
-        const frameSet = new Set(stack);
-        if (frameSet.size < stack.length * 0.5) {
-          reasons.push(t('cpuAnalysis.reasonLoopFrame', { total: stack.length, unique: frameSet.size }));
-        }
-      }
-
-      // --- 检查超深栈 ---
-      if (stackDepth > 150) {
-        reasons.push(t('cpuAnalysis.reasonDeepStack', { count: stackDepth }));
-      }
-
-      // --- 检查共享栈帧（瓶颈检测） ---
-      if (stack.length > 0) {
-        const sameStack = stackSigMap.get(stack[0]);
-        if (sameStack && sameStack.length > 1) {
-          reasons.push(t('cpuAnalysis.reasonSharedTop', { count: sameStack.length }));
-        }
-      }
-
-      // --- 默认评估 ---
-      if (reasons.length === 0) {
-        reasons.push(t('cpuAnalysis.reasonDefault'));
-      }
-
-      return { thread, category, reasons, stackDepth, topFrame };
-    });
-  }, [threads, t]);
+    if (!cpuInference) return [];
+    return cpuInference.rows.map((row) => ({
+      thread: row.thread,
+      category: row.category,
+      reasons: row.reasons,
+      stackDepth: row.stackDepth,
+      topFrame: row.topFrame,
+    }));
+  }, [cpuInference]);
 
   // ========== 分组统计 ==========
   const stats = useMemo(() => {
     const total = evalResults.length;
     const counts: Record<ThreadCategory, number> = {
-      cpu_consuming: 0, io_wait: 0, gc: 0,
+      cpu_consuming: 0, io_wait: 0, native: 0, gc: 0, no_stack: 0,
     };
     evalResults.forEach((r) => counts[r.category]++);
     return { total, counts };
@@ -741,9 +679,10 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
       filters: [
         { text: t('cpuAnalysis.categoryCpu'), value: 'cpu_consuming' },
         { text: t('cpuAnalysis.categoryIo'), value: 'io_wait' },
+        { text: t('cpuAnalysis.categoryNative'), value: 'native' },
         { text: t('cpuAnalysis.categoryGc'), value: 'gc' },
+        { text: t('cpuAnalysis.categoryNoStack'), value: 'no_stack' },
       ],
-      defaultFilteredValue: ['cpu_consuming'],
       onFilter: (value, record) => record.category === value,
       render: (category: ThreadCategory) => {
         const cfg = CATEGORY_CONFIG[category];
@@ -869,6 +808,7 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
   }
 
   const cpuConsuming = stats.counts.cpu_consuming;
+  const { io_wait: ioWait, native: nativeCnt, gc: gcCnt, no_stack: noStackCnt } = stats.counts;
 
   return (
     <div>
@@ -912,14 +852,24 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
                   {t('cpuAnalysis.cpuConsuming', { count: cpuConsuming })}
                 </Tag>
               )}
-              {stats.counts.io_wait > 0 && (
+              {ioWait > 0 && (
                 <Tag color="default" style={{ fontSize: 13, padding: '4px 12px' }}>
-                  {t('cpuAnalysis.ioWaiting', { count: stats.counts.io_wait })}
+                  {t('cpuAnalysis.ioWaiting', { count: ioWait })}
                 </Tag>
               )}
-              {stats.counts.gc > 0 && (
+              {nativeCnt > 0 && (
+                <Tag color="purple" style={{ fontSize: 13, padding: '4px 12px' }}>
+                  {t('cpuAnalysis.nativeUnknown', { count: nativeCnt })}
+                </Tag>
+              )}
+              {gcCnt > 0 && (
                 <Tag color="cyan" style={{ fontSize: 13, padding: '4px 12px' }}>
-                  {t('cpuAnalysis.gcSystem', { count: stats.counts.gc })}
+                  {t('cpuAnalysis.gcSystem', { count: gcCnt })}
+                </Tag>
+              )}
+              {noStackCnt > 0 && (
+                <Tag color="default" style={{ fontSize: 13, padding: '4px 12px' }}>
+                  {t('cpuAnalysis.noStack', { count: noStackCnt })}
                 </Tag>
               )}
             </div>
@@ -929,6 +879,14 @@ const CpuAnalysis: React.FC<CpuAnalysisProps> = ({
                 type="warning"
                 showIcon
                 message={t('cpuAnalysis.alertCpu', { count: cpuConsuming })}
+                style={{ marginTop: 12, borderRadius: 8 }}
+              />
+            )}
+            {cpuConsuming === 0 && stats.total > 0 && (
+              <Alert
+                type="success"
+                showIcon
+                message={t('cpuAnalysis.alertNoCpu')}
                 style={{ marginTop: 12, borderRadius: 8 }}
               />
             )}

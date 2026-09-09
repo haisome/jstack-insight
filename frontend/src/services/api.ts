@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type {
   ApiResult,
+  CpuInferenceVO,
   TopCpuVO,
   ReportSummary,
   ThreadStateVO,
@@ -182,6 +183,16 @@ export async function getReportStackGroups(
 ): Promise<StackGroupVO[]> {
   const response = await http.get<ApiResult<StackGroupVO[]>>(
     `/api/v1/report/${uuid}/stack-groups`
+  );
+  return response.data.data;
+}
+
+/**
+ * 获取 CPU 线程推测结果（后端基于完整调用栈计算，与导出的 HTML 报告完全同源）。
+ */
+export async function getCpuInference(uuid: string): Promise<CpuInferenceVO> {
+  const response = await http.get<ApiResult<CpuInferenceVO>>(
+    `/api/v1/report/${uuid}/cpu-inference`
   );
   return response.data.data;
 }

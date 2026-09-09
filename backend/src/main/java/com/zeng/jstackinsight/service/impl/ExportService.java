@@ -1,8 +1,10 @@
 package com.zeng.jstackinsight.service.impl;
 
+import com.zeng.jstackinsight.api.response.CpuInferenceVO;
 import com.zeng.jstackinsight.api.response.DeadlockChainVO;
 import com.zeng.jstackinsight.api.response.FlameGraphVO;
 import com.zeng.jstackinsight.api.response.ThreadStateVO;
+import com.zeng.jstackinsight.service.analyzer.CpuInferenceAnalyzer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
@@ -14,7 +16,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -35,6 +36,9 @@ public class ExportService {
     @Autowired
     private TemplateEngine templateEngine;
 
+    @Autowired
+    private CpuInferenceAnalyzer cpuInferenceAnalyzer;
+
     private static final Map<String, String> STATE_COLORS = new LinkedHashMap<>();
     static {
         STATE_COLORS.put("RUNNABLE", "#1677ff");
@@ -52,57 +56,6 @@ public class ExportService {
         FLAME_COLORS.put("spring", "#52c41a");
         FLAME_COLORS.put("app", "#fa8c16");
         FLAME_COLORS.put("other", "#bfbfbf");
-    }
-
-    // CPU 推测：已知的 Native I/O 等待方法（伪装 RUNNABLE）
-    private static final Pattern[] IO_WAIT_PATTERNS = {
-        Pattern.compile("socketRead0", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("socketWrite0", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("socketAccept", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("epollWait", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("poll0", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("pollOne", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("waitForSignal", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("socketConnect", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("read0", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("write0", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("available", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("InputStream\\.read", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("FileChannelImpl\\.read", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("FileChannelImpl\\.write", Pattern.CASE_INSENSITIVE),
-    };
-
-    // CPU 推测：GC/系统级线程名模式
-    private static final Pattern[] GC_NAME_PATTERNS = {
-        Pattern.compile("GC\\s"),
-        Pattern.compile("GC task"),
-        Pattern.compile("VM Thread"),
-        Pattern.compile("CompilerThread"),
-        Pattern.compile("ConcurrentGC"),
-        Pattern.compile("G1"),
-        Pattern.compile("Paralle"),
-        Pattern.compile("CMS"),
-        Pattern.compile("ZGC"),
-        Pattern.compile("Shenandoah"),
-    };
-
-    private enum CpuCategory { CPU_CONSUMING, IO_WAIT, GC }
-
-    private static class CpuThreadResult {
-        final ThreadStateVO.ThreadSummary thread;
-        final CpuCategory category;
-        final List<String> reasons;
-        final int stackDepth;
-        final String topFrame;
-
-        CpuThreadResult(ThreadStateVO.ThreadSummary thread, CpuCategory category,
-                        List<String> reasons, int stackDepth, String topFrame) {
-            this.thread = thread;
-            this.category = category;
-            this.reasons = reasons;
-            this.stackDepth = stackDepth;
-            this.topFrame = topFrame;
-        }
     }
 
     /**
@@ -132,8 +85,8 @@ public class ExportService {
             tidToFull.put(t.getTid(), t);
         }
 
-        // CPU 推测分析
-        List<CpuThreadResult> cpuResults = analyzeCpuThreads(fullThreads);
+        // CPU 推测分析（与前端页面共用同一分析器，保证数量一致）
+        CpuInferenceVO cpuInference = cpuInferenceAnalyzer.analyze(fullThreads);
 
         // 火焰图数据
         FlameGraphVO flameGraph;
@@ -152,7 +105,7 @@ public class ExportService {
         context.setVariable("inlineCss", readResource("templates/export/static/export.css"));
         context.setVariable("inlineJs", readResource("templates/export/static/export.js"));
         context.setVariable("overview", buildOverview(threadState, deadlocks));
-        context.setVariable("cpu", buildCpu(cpuResults));
+        context.setVariable("cpu", buildCpu(cpuInference));
         context.setVariable("flame", buildFlame(flameGraph));
         context.setVariable("threads", buildThreads(threadState, tidToFull));
         context.setVariable("stackGroups", buildStackGroups(stackGroups, threadState.getThreads().size()));
@@ -215,119 +168,38 @@ public class ExportService {
     // CPU 推测数据组装
     // ================================================================
 
-    /**
-     * 对 RUNNABLE 线程进行启发式 CPU 分类，与前端 CpuAnalysis 逻辑一致。
-     */
-    private List<CpuThreadResult> analyzeCpuThreads(List<ThreadStateVO.ThreadSummary> fullThreads) {
-        List<CpuThreadResult> results = new ArrayList<>();
-
-        // 构建栈顶帧 → 线程列表，用于检测共享瓶颈
-        Map<String, List<ThreadStateVO.ThreadSummary>> stackSigMap = new LinkedHashMap<>();
-        for (ThreadStateVO.ThreadSummary t : fullThreads) {
-            if ("RUNNABLE".equals(t.getState()) && t.getStackTrace() != null && !t.getStackTrace().isEmpty()) {
-                stackSigMap.computeIfAbsent(t.getStackTrace().get(0), k -> new ArrayList<>()).add(t);
-            }
-        }
-
-        for (ThreadStateVO.ThreadSummary t : fullThreads) {
-            if (!"RUNNABLE".equals(t.getState())) continue;
-            List<String> stack = t.getStackTrace() != null ? t.getStackTrace() : Collections.emptyList();
-            int stackDepth = stack.size();
-            String topFrame = stack.isEmpty() ? "(无栈帧)" : stack.get(0);
-            List<String> reasons = new ArrayList<>();
-            CpuCategory category = CpuCategory.CPU_CONSUMING;
-
-            // 检查 Native I/O 等待
-            boolean isIoWait = false;
-            String matchedIoFrame = null;
-            for (String frame : stack) {
-                for (Pattern pat : IO_WAIT_PATTERNS) {
-                    if (pat.matcher(frame).find()) {
-                        isIoWait = true;
-                        matchedIoFrame = frame;
-                        break;
-                    }
-                }
-                if (isIoWait) break;
-            }
-            if (isIoWait) {
-                category = CpuCategory.IO_WAIT;
-                reasons.add("疑似 Native I/O 等待: " + (matchedIoFrame != null ? matchedIoFrame.substring(0, Math.min(60, matchedIoFrame.length())) : ""));
-                results.add(new CpuThreadResult(t, category, reasons, stackDepth, topFrame));
-                continue;
-            }
-
-            // 检查 GC 线程
-            boolean isGcThread = false;
-            for (Pattern pat : GC_NAME_PATTERNS) {
-                if (pat.matcher(t.getName()).find()) {
-                    isGcThread = true;
-                    break;
-                }
-            }
-            if (isGcThread) {
-                category = CpuCategory.GC;
-                reasons.add("为 GC 或 JVM 系统线程");
-                results.add(new CpuThreadResult(t, category, reasons, stackDepth, topFrame));
-                continue;
-            }
-
-            // 检查死循环嫌疑（重复栈帧）
-            if (stack.size() > 3) {
-                Set<String> frameSet = new HashSet<>(stack);
-                if (frameSet.size() < stack.size() * 0.5) {
-                    reasons.add("栈帧重复率异常: " + stack.size() + " 帧中仅 " + frameSet.size() + " 个唯一帧（疑似死循环）");
-                }
-            }
-
-            // 检查超深栈
-            if (stackDepth > 150) {
-                reasons.add("调用栈异常深 (" + stackDepth + " 帧)，疑似深度递归或复杂调用链");
-            }
-
-            // 检查共享栈顶瓶颈
-            List<ThreadStateVO.ThreadSummary> sameStack = stackSigMap.get(topFrame);
-            if (sameStack != null && sameStack.size() > 1) {
-                reasons.add("与 " + sameStack.size() + " 个线程共享相同栈顶（疑似瓶颈点）");
-            }
-
-            if (reasons.isEmpty()) {
-                reasons.add("RUNNABLE 状态，栈顶: " + topFrame.substring(0, Math.min(80, topFrame.length())));
-            }
-
-            results.add(new CpuThreadResult(t, category, reasons, stackDepth, topFrame));
-        }
-        return results;
-    }
-
-    private Map<String, Object> buildCpu(List<CpuThreadResult> results) {
+    private Map<String, Object> buildCpu(CpuInferenceVO inference) {
         Map<String, Object> cpu = new LinkedHashMap<>();
 
-        long cpuCount = results.stream().filter(r -> r.category == CpuCategory.CPU_CONSUMING).count();
-        long ioCount = results.stream().filter(r -> r.category == CpuCategory.IO_WAIT).count();
-        long gcCount = results.stream().filter(r -> r.category == CpuCategory.GC).count();
-
-        cpu.put("total", results.size());
-        cpu.put("cpuCount", cpuCount);
-        cpu.put("ioCount", ioCount);
-        cpu.put("gcCount", gcCount);
-
-        // 排序：CPU 消耗优先，其次 IO 等待，最后 GC 系统线程
-        List<CpuThreadResult> sorted = new ArrayList<>(results);
-        sorted.sort(Comparator.comparingInt(r -> categoryOrder(r.category)));
+        cpu.put("total", inference.getTotal());
+        cpu.put("cpuCount", inference.getCpuCount());
+        cpu.put("ioCount", inference.getIoCount());
+        cpu.put("gcCount", inference.getGcCount());
+        cpu.put("nativeCount", inference.getNativeCount());
+        cpu.put("noStackCount", inference.getNoStackCount());
 
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (CpuThreadResult r : sorted) {
+        for (CpuInferenceVO.CpuThreadRow r : inference.getRows()) {
             Map<String, Object> row = new LinkedHashMap<>();
-            switch (r.category) {
-                case CPU_CONSUMING:
+            switch (r.getCategory()) {
+                case CpuInferenceVO.CAT_CPU:
                     row.put("catLabel", "CPU 消耗");
                     row.put("catBg", "#ff4d4f");
                     row.put("rowColor", "#fff2f0");
                     break;
-                case IO_WAIT:
+                case CpuInferenceVO.CAT_IO:
                     row.put("catLabel", "IO 等待");
                     row.put("catBg", "#8c8c8c");
+                    row.put("rowColor", "#fafafa");
+                    break;
+                case CpuInferenceVO.CAT_NATIVE:
+                    row.put("catLabel", "Native 未知");
+                    row.put("catBg", "#722ed1");
+                    row.put("rowColor", "#f9f0ff");
+                    break;
+                case CpuInferenceVO.CAT_NO_STACK:
+                    row.put("catLabel", "无调用栈");
+                    row.put("catBg", "#595959");
                     row.put("rowColor", "#fafafa");
                     break;
                 default:
@@ -336,25 +208,16 @@ public class ExportService {
                     row.put("rowColor", "#e6fffb");
                     break;
             }
-            row.put("category", r.category.name());
-            row.put("thread", r.thread);
-            row.put("reasons", r.reasons);
-            row.put("stackDepth", r.stackDepth);
-            row.put("topFrame", r.topFrame.substring(0, Math.min(100, r.topFrame.length())));
+            row.put("category", r.getCategory());
+            row.put("thread", r.getThread());
+            row.put("reasons", r.getReasons());
+            row.put("stackDepth", r.getStackDepth());
+            row.put("topFrame", r.getTopFrame().substring(0, Math.min(100, r.getTopFrame().length())));
             rows.add(row);
         }
         cpu.put("results", rows);
 
         return cpu;
-    }
-
-    /** CPU 分类的展示优先级：CPU 消耗 → IO 等待 → GC 系统。 */
-    private int categoryOrder(CpuCategory category) {
-        switch (category) {
-            case CPU_CONSUMING: return 0;
-            case IO_WAIT: return 1;
-            default: return 2;
-        }
     }
 
     // ================================================================

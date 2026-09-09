@@ -21,8 +21,8 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
-import { getReportSummary, getThreadsSummary, getReportLockGraph, getReportFlameGraph, getReportDeadlocks, extendReport, getThreadsIdx, getThreadsBucket, getReportStackGroups, getExportHtmlUrl } from '../../services/api';
-import type { ReportSummary, ThreadStateVO, LockGraphVO, FlameGraphVO, DeadlockChainVO, TopCpuVO, ThreadSummary, StackGroupVO } from '../../types';
+import { getReportSummary, getThreadsSummary, getReportLockGraph, getReportFlameGraph, getReportDeadlocks, extendReport, getThreadsIdx, getThreadsBucket, getReportStackGroups, getExportHtmlUrl, getCpuInference } from '../../services/api';
+import type { ReportSummary, ThreadStateVO, LockGraphVO, FlameGraphVO, DeadlockChainVO, TopCpuVO, ThreadSummary, StackGroupVO, CpuInferenceVO } from '../../types';
 
 const { Sider, Content } = Layout;
 const { Title } = Typography;
@@ -76,6 +76,9 @@ const ReportResultPage: React.FC = () => {
   // CPU 分析状态（精准模式需要上传 top 文件）
   const [cpuTopResult, setCpuTopResult] = useState<TopCpuVO | null>(null);
   const [cpuTopFileList, setCpuTopFileList] = useState<UploadFile[]>([]);
+  // CPU 线程推测结果（后端计算，与导出报告同源）
+  const [cpuInference, setCpuInference] = useState<CpuInferenceVO | null>(null);
+  const [cpuInferenceLoading, setCpuInferenceLoading] = useState(false);
 
   // 线程分桶索引 + 缓存（避免每次展开都请求）
   const [threadsIdx, setThreadsIdx] = useState<Record<number, number> | null>(null);
@@ -105,7 +108,6 @@ const ReportResultPage: React.FC = () => {
     const tab = activeTab;
     switch (tab) {
       case 'overview':
-      case 'cpu-inference':
       case 'cpu-precise':
       case 'thread-group':
         if (!threadsData) {
@@ -114,6 +116,16 @@ const ReportResultPage: React.FC = () => {
             .then(setThreadsData)
             .catch((err) => message.error('线程数据加载失败：' + (err instanceof Error ? err.message : '未知')))
             .finally(() => setThreadsLoading(false));
+        }
+        break;
+      case 'cpu-inference':
+        // CPU 推测依赖完整调用栈，由后端基于全量线程详情计算，与导出报告同源
+        if (!cpuInference) {
+          setCpuInferenceLoading(true);
+          getCpuInference(uuid)
+            .then(setCpuInference)
+            .catch((err) => message.error('CPU 推测数据加载失败：' + (err instanceof Error ? err.message : '未知')))
+            .finally(() => setCpuInferenceLoading(false));
         }
         break;
       case 'thread-list':
@@ -494,17 +506,18 @@ const ReportResultPage: React.FC = () => {
 
           {activeTab === 'cpu-inference' && (
             <>
-              {renderLoading(threadsLoading, t('result.loading'))}
-              {threadsData && (
+              {renderLoading(cpuInferenceLoading, t('result.loading'))}
+              {cpuInference && (
                 <Suspense fallback={<Spin tip={t('result.loading')}><div style={{ padding: 60 }} /></Spin>}>
                   <CpuAnalysis
-                    threads={threadsData.threads}
+                    threads={threadsData?.threads ?? []}
                     reportId={uuid}
                     cpuTopResult={cpuTopResult}
                     setCpuTopResult={setCpuTopResult}
                     cpuTopFileList={cpuTopFileList}
                     setCpuTopFileList={setCpuTopFileList}
                     view="inference"
+                    cpuInference={cpuInference}
                   />
                 </Suspense>
               )}
@@ -524,6 +537,7 @@ const ReportResultPage: React.FC = () => {
                     cpuTopFileList={cpuTopFileList}
                     setCpuTopFileList={setCpuTopFileList}
                     view="precise"
+                    cpuInference={cpuInference}
                   />
                 </Suspense>
               )}

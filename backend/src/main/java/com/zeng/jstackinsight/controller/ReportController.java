@@ -1,6 +1,7 @@
 package com.zeng.jstackinsight.controller;
 
 import com.zeng.jstackinsight.api.response.*;
+import com.zeng.jstackinsight.service.analyzer.CpuInferenceAnalyzer;
 import com.zeng.jstackinsight.service.impl.ExportService;
 import com.zeng.jstackinsight.service.impl.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,10 +38,13 @@ public class ReportController {
 
     private final ReportService reportService;
     private final ExportService exportService;
+    private final CpuInferenceAnalyzer cpuInferenceAnalyzer;
 
-    public ReportController(ReportService reportService, ExportService exportService) {
+    public ReportController(ReportService reportService, ExportService exportService,
+                            CpuInferenceAnalyzer cpuInferenceAnalyzer) {
         this.reportService = reportService;
         this.exportService = exportService;
+        this.cpuInferenceAnalyzer = cpuInferenceAnalyzer;
     }
 
     /**
@@ -175,6 +179,25 @@ public class ReportController {
             return Result.ok(reportService.getFlameGraph(uuid));
         } catch (Exception e) {
             log.error("报告查询失败: uuid={}, {}", uuid, e.toString());
+            return Result.fail(404, "报告不存在或已过期: " + uuid);
+        }
+    }
+
+    /**
+     * 获取 CPU 线程推测结果（与导出的 HTML 报告完全同源）。
+     *
+     * <p>推测依赖完整调用栈，必须在后端基于完整线程详情计算；
+     * 前端只有不含栈的线程摘要，自行推测会把所有 RUNNABLE 线程误判为 CPU 消耗。
+     */
+    @Operation(summary = "CPU 线程推测", description = "对 RUNNABLE 线程做启发式分类：CPU 消耗 / IO 等待 / GC 系统")
+    @GetMapping("/{uuid}/cpu-inference")
+    public Result<CpuInferenceVO> getCpuInference(
+            @Parameter(description = "报告 UUID") @PathVariable String uuid) {
+        try {
+            List<ThreadStateVO.ThreadSummary> fullThreads = reportService.getAllThreadDetails(uuid);
+            return Result.ok(cpuInferenceAnalyzer.analyze(fullThreads));
+        } catch (Exception e) {
+            log.error("CPU 推测失败: uuid={}, {}", uuid, e.toString());
             return Result.fail(404, "报告不存在或已过期: " + uuid);
         }
     }

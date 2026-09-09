@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, App as AntApp, theme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
@@ -50,6 +50,8 @@ const App: React.FC = () => {
         <Routes>
           <Route path="/" element={<UploadPage />} />
           <Route path="/report/:uuid" element={<ReportResultPage />} />
+          {/* 兜底：/index.html 等未识别路径统一回到首页，避免渲染空路由造成白屏 */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AntApp>
     </ConfigProvider>
